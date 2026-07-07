@@ -1,0 +1,74 @@
+@import 'tailwindcss';
+@import '@fontsource-variable/figtree';
+
+/* Design tokens — from design/README.md (pixel-level spec) */
+@theme {
+  --font-sans: 'Figtree Variable', ui-sans-serif, system-ui, sans-serif;
+
+  --color-ink: #111111;
+  --color-soft: #555555;
+  --color-muted: #888888;
+  --color-faint: #adadad;
+  --color-label: #8a8a8a;
+  --color-card: #f7f7f7;
+  --color-field: #f2f2f2;
+  --color-inputfill: #eeeeee;
+  --color-inputline: #e2e2e2;
+  --color-divider: #f0f0f0;
+  --color-success: #15803d;
+  --color-success-soft: #f0fdf4;
+  --color-danger: #c62828;
+  --color-danger-soft: #fef3f2;
+  --color-warn: #d97706;
+  --color-avatar: #efefef;
+
+  --ease-screen: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@layer base {
+  body {
+    @apply m-0 bg-white font-sans text-ink antialiased;
+  }
+  input,
+  button,
+  textarea,
+  select {
+    font: inherit;
+  }
+}
+
+/* iOS push/pop screen transitions (design README, Motion) */
+@keyframes screen-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(28px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes screen-in-left {
+  from {
+    opacity: 0;
+    transform: translateX(-28px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@utility screen-forward {
+  animation: screen-in-right 0.32s var(--ease-screen) both;
+}
+@utility screen-back {
+  animation: screen-in-left 0.32s var(--ease-screen) both;
+}
+
+/* Tap feedback: tappables scale to 0.96 on press (design README, Motion) */
+@utility pressable {
+  transition: transform 0.32s var(--ease-screen);
+  &:active {
+    transform: scale(0.96);
+  }
+}

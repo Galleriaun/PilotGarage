@@ -1,0 +1,123 @@
+import { useNavigate } from 'react-router'
+import { useAuth } from '../../app/providers/AuthProvider'
+import { useBusiness } from '../../app/providers/BusinessProvider'
+import { Splash } from '../../app/guards'
+import type { Business } from '../../lib/types'
+
+function WrenchIcon() {
+  return (
+    <svg
+      width="22"
+      height="22"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="white"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z" />
+    </svg>
+  )
+}
+
+function TruckIcon() {
+  return (
+    <svg
+      width="22"
+      height="22"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="white"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <rect x="1" y="3" width="15" height="13" rx="2" />
+      <path d="M16 8h4l3 3v3h-7V8z" />
+      <circle cx="5.5" cy="18.5" r="2.5" />
+      <circle cx="18.5" cy="18.5" r="2.5" />
+    </svg>
+  )
+}
+
+function ChevronRight() {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="#ADADAD"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <polyline points="9 18 15 12 9 6" />
+    </svg>
+  )
+}
+
+function BusinessCard({ business, onSelect }: { business: Business; onSelect: () => void }) {
+  const isServis = business.code === 'SERVIS'
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className="pressable flex w-full cursor-pointer items-center justify-between rounded-[20px] bg-card px-6 py-16 text-left"
+    >
+      <span
+        className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-[14px] ${
+          isServis ? 'bg-ink' : 'bg-danger'
+        }`}
+      >
+        {isServis ? <WrenchIcon /> : <TruckIcon />}
+      </span>
+      <span className="text-[20px] font-bold tracking-[-0.3px] text-ink">{business.name}</span>
+      <ChevronRight />
+    </button>
+  )
+}
+
+export default function BizSelect() {
+  const navigate = useNavigate()
+  const { signOut } = useAuth()
+  const { businesses, businessesLoading, selectBusiness } = useBusiness()
+
+  if (businessesLoading) return <Splash />
+
+  function choose(id: string) {
+    selectBusiness(id)
+    void navigate('/', { replace: true })
+  }
+
+  return (
+    <div className="mx-auto flex min-h-dvh w-full max-w-[480px] flex-col px-7 pb-10 screen-forward">
+      <div className="pt-11">
+        <h1 className="text-[28px] font-bold leading-[1.2] tracking-[-0.5px] text-ink">
+          İşletme Seç
+        </h1>
+      </div>
+      <div className="flex flex-1 flex-col justify-center gap-[14px] pb-[60px] pt-12">
+        {businesses.length === 0 ? (
+          <p className="text-center text-[15px] leading-relaxed text-muted">
+            Henüz bir işletmeye erişiminiz yok. Yöneticinizin size işletme ataması gerekiyor.
+          </p>
+        ) : (
+          businesses.map((b) => (
+            <BusinessCard key={b.id} business={b} onSelect={() => choose(b.id)} />
+          ))
+        )}
+      </div>
+      <div className="pt-8 text-center">
+        <button
+          type="button"
+          onClick={() => void signOut()}
+          className="cursor-pointer text-sm text-faint"
+        >
+          Çıkış yap
+        </button>
+      </div>
+    </div>
+  )
+}

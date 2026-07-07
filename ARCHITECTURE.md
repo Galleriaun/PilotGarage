@@ -1,0 +1,224 @@
+# PilotGarage — Architecture
+
+**One PWA, two businesses.** A mobile-first web app for a Turkish auto operation running two related businesses side by side:
+
+| Code | Business | Type |
+|---|---|---|
+| `SERVIS` | **PilotGarage** | Auto service (vehicle check-ins, packages) |
+| `GALERI` | **Arabam.com** | Car dealership (galeri) |
+
+Staff sign in once; Yönetici picks (and can switch) the active business at any time. All operational data is scoped per business. The design reference is a pixel-level prototype in [`design/Auth.dc.html`](design/Auth.dc.html) with a behavioral spec in [`design/README.md`](design/README.md) — **we follow it for ~90% of the UI** and rebuild it natively (the `.dc.html` file is a spec, never imported).
+
+---
+
+## 1. Product principles (non-negotiable)
+
+1. **Finance must be flawless.** Every invariant that involves money lives in Postgres (constraints, triggers, `SECURITY DEFINER` RPCs) — never only in client code. Balances are always **derived** from approved transactions, never stored as a mutable number.
+2. **RBAC must be airtight.** A role must never see or reach a section it isn't entitled to. Enforced by RLS (server) *and* hidden in the UI (client) — RLS is the security boundary, the UI is just courtesy.
+3. **PWA is first-class.** Installable on iOS + Android from the browser, offline app shell, correct safe-area behavior. Treated as a feature, not packaging.
+4. **Fast for daily use.** Clean UI per the design; personnel complete their tasks in seconds.
+5. **Latest stable versions** of every dependency at scaffold time, so we don't pay an upgrade tax later.
+6. **DRY, KISS, YAGNI, SOLID.** One shared confirm dialog, one modal system, one money formatter, one draft/save pattern — exactly as the design prescribes.
+
+## 2. Stack (locked)
+
+- **Frontend:** Vite + React 19 + TypeScript + Tailwind CSS v4 — *exact latest stable versions resolved with `npm` at scaffold time*
+- **Routing:** React Router v7 (library mode), `basename: '/PilotGarage'`
+- **Server state:** TanStack Query v5; **forms:** react-hook-form + zod
+- **UI primitives:** Radix UI (Dialog, DropdownMenu) styled with Tailwind to match the design tokens — the design is fully custom, so no prebuilt component theme
+- **Font:** Figtree 400/500/600/700, self-hosted via `@fontsource-variable/figtree` (works offline, no Google CDN)
+- **PWA:** `vite-plugin-pwa` (Workbox)
+- **Backend:** Supabase — Postgres + Auth + Storage + Edge Functions (EU/Frankfurt region)
+- **Hosting:** GitHub Pages (repo `PilotGarage`) + GitHub Actions (deploy + keepalive)
+- **Images:** `browser-image-compression` (~200 KB JPEG, max 1280px) before any upload
+
+> Supabase free tier allows 2 active projects — HomeGuru uses one, PilotGarage is the second. Keepalive workflow required (see §10). Pro upgrade deferred (owner decision 2026-07-07); when it happens later: drop `keepalive.yml` (Pro never auto-pauses) and relax image compression to max 1920px/~500 KB (storage stops mattering, but keep compression — mobile upload speed and egress are the real constraints).
+
+## 3. Roles & access matrix
+
+Three fixed roles (design role picker) plus one implicit lifecycle state:
+
+| Role | Design description | Landing screen |
+|---|---|---|
+| `YONETICI` | "Tüm yetkilere sahip" | İşletme Seç → Yönetici Home |
+| `MUHASEBE` | "Finans ve raporlar" | Yönetici Home (finance subset) |
+| `PERSONEL` | "Sınırlı erişim" | Personel Home |
+| *(pending)* | — signup not yet approved | "Hesabınız onay bekliyor" screen only |
+
+| Capability | PERSONEL | MUHASEBE | YONETICI |
+|---|---|---|---|
+| Kayıt list / detail / new / durum change | ✅ | ✅ | ✅ |
+| Read paketler (for the picker) | ✅ | ✅ | ✅ |
+| Yönetim (finance home, widgets) | ❌ | ✅ | ✅ |
+| Gelir/Gider Ekle (→ Onay queue) | ❌ | ✅ | ✅ |
+| Tüm İşlemler (history + filters) | ❌ | ✅ | ✅ |
+| **Onay** (approve/reject pending) | ❌ | ✅ | ✅ |
+| İşletmeler (cari hesap) + hareket + yansıt | ❌ | ✅ | ✅ |
+| Paket & Fiyatlar management | ❌ | ✅ | ✅ |
+| Personel management (roster, maaş, avans) | ❌ | ✅ | ✅ |
+| **Rol Değiştir** (change a user's role) | ❌ | ❌ | ✅ |
+| **İşletme Erişimi** (grant/revoke business access) | ❌ | ❌ | ✅ |
+| Sabit Giderler management | ❌ | ✅ | ✅ |
+| İşletme Ayarları (name, categories) | ❌ | ✅ | ✅ |
+| Approve signups / assign roles | ❌ | ❌ | ✅ |
+| Business access | assigned only | assigned only | **both, always** |
+
+- **Muhasebe = Yönetici minus role control** (owner decision, 2026-07-07): full management + finance access within assigned business(es); anything that changes a user's role, grants/revokes business access, or approves a signup stays Yönetici-only ("for now" — may loosen later).
+- The **Onay floating badge** renders for `MUHASEBE` and `YONETICI` — deliberate deviation from the design README (which drew it Yönetici-only), superseded by the owner decision above.
+- Muhasebe uses the Yönetici bottom nav and the full Yönetim Menü; only role controls (Rol Değiştir, signup approval) are hidden.
+- **Yönetici decides per user which business(es) they see** — PilotGarage only, Arabam.com only, or both — via an **İşletme Erişimi** selector in Personel Detay (owner decision 2026-07-07; this control is an addition to the design prototype, which has none).
+- Business switching: Yönetici switches freely (İşletme Seç + in-app switcher); Personel/Muhasebe assigned to one business skip İşletme Seç entirely; if assigned to both, they get the picker too. Last choice remembered in `localStorage`.
+
+## 4. Auth & account lifecycle (open signup, gated)
+
+1. **Kayıt Ol** (design screen) is live — anyone can sign up via Supabase Auth.
+2. A DB trigger on `auth.users` creates a `profiles` row with `role = NULL`, `status = 'PENDING'`.
+3. Pending users see only the "onay bekliyor" screen. **RLS gives them zero rows on every table** — the `NULL` role case is explicitly tested, not assumed (deny-by-default policies never match `role IS NULL`).
+4. Yönetici sees pending signups in the Personel screen, assigns **role + business access (PilotGarage, Arabam.com, or both) + maaş/ödeme günü** → `status = 'ACTIVE'`. Business access can be changed later from Personel Detay (İşletme Erişimi, Yönetici-only).
+5. `status = 'DISABLED'` cuts all access instantly (RLS checks `status = 'ACTIVE'` everywhere).
+
+Notes: Supabase built-in SMTP allows ~4 confirmation emails/hour — fine at staff scale. Role/status live in `profiles`, read by RLS through a `SECURITY DEFINER` helper (avoids recursive-policy pitfalls). Roles are **never** trusted from the client.
+
+## 5. Data model
+
+Convention: infra tables in English (`profiles`, `businesses`, `business_members`, `audit_log`); domain tables use the design's Turkish vocabulary (`kayitlar`, `paketler`, `islemler`, …). All domain tables carry `business_id`. All money columns are `NUMERIC(12,2) CHECK (> 0)` — sign is derived from `tur`, never stored negative.
+
+```
+profiles            id (= auth.users.id), full_name, role ENUM(YONETICI|MUHASEBE|PERSONEL) NULL,
+                    status ENUM(PENDING|ACTIVE|DISABLED), created_at
+businesses          id, code ENUM(SERVIS|GALERI) UNIQUE, name, telefon, adres        -- 2 seeded rows
+business_members    profile_id, business_id, maas NUMERIC(12,2), odeme_gunu INT 0..28,  -- 0 = elle ödeme
+                    PK(profile_id, business_id)
+personel_odemeler   id, profile_id, business_id, tur ENUM(MAAS|AVANS), tutar, note,
+                    tarih, islem_id FK, created_by
+paketler            id, business_id, name, price, is_active BOOL                     -- soft delete
+kayitlar            id, business_id, musteri_adi, plaka, marka, model, yil, km, ruhsat_no,
+                    paket_id FK, tarih, durum ENUM(AKTIF|BEKLENEN|TAMAMLANDI),
+                    created_by, created_at, updated_at
+kayit_fotograflar   id, kayit_id, storage_path, created_by
+kategoriler         id, business_id, tur ENUM(GELIR|GIDER), label, is_active         -- soft delete
+islemler            id, business_id, tur ENUM(GELIR|GIDER), tutar, baslik, kategori_id FK,
+                    kaynak ENUM(MANUEL|KAYIT|CARI_HESAP|SABIT_GIDER|PERSONEL),
+                    durum ENUM(BEKLIYOR|ONAYLANDI|REDDEDILDI),
+                    islem_tarihi, created_by, onaylayan, onaylanma_tarihi,
+                    kayit_id FK NULL, cari_hareket_id FK NULL
+tekrar_kurallari    id, business_id, tur, tutar, baslik, kategori_id,
+                    siklik ENUM(HAFTALIK|AYLIK|YILLIK), next_run, is_active
+cari_isletmeler     id, business_id, name, note
+cari_hareketler     id, cari_isletme_id, tur ENUM(GELIR|GIDER), tutar, note, tarih,
+                    kasa_durumu ENUM(YOK|BEKLIYOR|YANSIDI)
+sabit_giderler      id, business_id, name, tutar, odeme_gunu INT 1..28
+audit_log           id, actor, action, table_name, row_id, details JSONB, at
+```
+
+Soft deletes (`is_active`) on `paketler` and `kategoriler` because history references them; pickers only show active rows. Cari hesap balance (`alacak/borç`) is derived per partner: `SUM(gelir) - SUM(gider)` over its `hareketler`.
+
+## 6. Finance integrity — the Onay gate
+
+**Rule zero: nothing touches the kasa until Yönetici or Muhasebe approves it.** Every money entry is born `BEKLIYOR` in `islemler` and only counts after `ONAYLANDI` — with **one deliberate exception** (owner decision, 2026-07-07): **maaş and avans payments (`kaynak = PERSONEL`) skip the Onay queue and are born `ONAYLANDI`**, because the person triggering them is already an approver. The `pay_maas` / `give_avans` RPCs verify the caller is an active Yönetici/Muhasebe and stamp `onaylayan` at insert; cron auto-payments on `odeme_gunu` are likewise born `ONAYLANDI` (`onaylayan = NULL`, audit-logged as system). Born-approved rows are immutable like any approved row — corrections are counter-entries.
+
+- **Balance is a view, not a column.** `v_kasa_ozet` computes gelir/gider/bakiye per business strictly from `durum = 'ONAYLANDI'` rows. Period widgets (Tümü/Bugün/Hafta/Ay) and Tüm İşlemler filter server-side over the same rows. No drift possible.
+- **State machine enforced in the DB.** Clients get `INSERT` (as `BEKLIYOR` only — enforced by CHECK/RLS `WITH CHECK`) and `SELECT`. Direct `UPDATE`/`DELETE` on `islemler` is denied. The only transitions are `approve_islem(id)` / `reject_islem(id)` — `SECURITY DEFINER` RPCs that verify the caller is an active Yönetici or Muhasebe (Muhasebe business-scoped), stamp `onaylayan`/`onaylanma_tarihi`, and audit-log. A trigger rejects any mutation of a row already `ONAYLANDI`/`REDDEDILDI` — corrections are made with a counter-entry (standard accounting), never by editing history.
+- **Pending rows** may be deleted by their creator, Muhasebe, or Yönetici (typo escape hatch) while still `BEKLIYOR`.
+- **Linked side effects are atomic.** `approve_islem` on a `CARI_HESAP` entry sets the linked `cari_hareketler.kasa_durumu = 'YANSIDI'`; reject resets it to `'YOK'` — same transaction, exactly as the prototype behaves.
+- **No float math anywhere.** Postgres `NUMERIC` on the server; on the client all arithmetic is integer **kuruş**, with one shared `formatTL()` (`Intl.NumberFormat('tr-TR')`) and one shared amount-input parser (accepts comma decimals, validates > 0, max 2 decimals).
+- Every RPC and status change writes to `audit_log`.
+
+### Money flows (all end in the Onay queue)
+
+| Source (`kaynak`) | Trigger |
+|---|---|
+| `MANUEL` | Gelir/Gider Ekle modal (Muhasebe/Yönetici) |
+| `KAYIT` | DB trigger: kayıt `durum → TAMAMLANDI` with a paket → pending GELİR for the paket price (`"34 ABC 123 — Genel Servis"`), once per kayıt. Reverting from TAMAMLANDI deletes the entry if still pending; if already approved, correction is manual. |
+| `CARI_HESAP` | "Kasaya Yansıt" on a hareket → pending işlem + `kasa_durumu = 'BEKLIYOR'` |
+| `SABIT_GIDER` | Daily `pg_cron` job: on each item's `odeme_gunu` → pending GİDER |
+| `PERSONEL` | Avans Ver and maaş payment (manual or auto on `odeme_gunu`) → GİDER born **`ONAYLANDI`** (skips Onay — see rule-zero exception), linked from `personel_odemeler` |
+| recurring | Daily cron materializes due `tekrar_kurallari` → pending işlem, advances `next_run` |
+
+## 7. RLS design
+
+- **Deny by default.** RLS enabled on every table; no policy → no rows.
+- Helpers (`SECURITY DEFINER STABLE`): `auth_role()`, `auth_status()`, `is_member_of(business_id)`, `is_yonetici()`.
+- Every policy requires `auth_status() = 'ACTIVE'` — so `PENDING`/`DISABLED`/`NULL` users match nothing.
+- Business scoping: `is_member_of(business_id) OR is_yonetici()` (Yönetici spans both businesses).
+- Role gates per matrix (§3): `islemler` SELECT/INSERT require MUHASEBE|YONETICI + business scope; management tables (`paketler`, `kategoriler`, `sabit_giderler`, `businesses`, `personel_odemeler`, `cari_*`) writable by MUHASEBE|YONETICI within business scope; `kayitlar` writable by all three active roles within their business; everyone can read their own membership row.
+- **Role and business access are Yönetici-only at the database level:** `profiles.role`/`profiles.status` are written exclusively through Yönetici-gated RPCs (`set_role` / signup approval), and `business_members` rows are **added/removed only via a Yönetici-gated RPC** (`set_business_access`) — membership rows *are* business access. Muhasebe may update only the pay fields (`maas`, `odeme_gunu`) of existing members in their business (column-level grants + policy). Muhasebe has **no write path to any role, status, or membership field** — enforced by policy, not just hidden in the UI.
+- `business_id` is **derived from membership, never trusted from the request body** — inserts re-check it in `WITH CHECK`.
+- Storage: `kayit-fotograflar` bucket private; paths prefixed `business_id/kayit_id/`; storage policies mirror table policies.
+
+## 8. Frontend architecture
+
+```
+src/
+  app/            router, providers (Auth, ActiveBusiness, QueryClient), AppShell (bottom nav + safe-area)
+  components/ui/  Modal, ConfirmDialog (shared delete confirm), Dropdown, SegmentedControl,
+                  StatusPill, Avatar (neutral gray, initials), FloatingSavePopup, AmountInput
+  features/       auth/ kayit/ finans/ onay/ paketler/ personel/ cari/ sabit-giderler/ ayarlar/
+  lib/            supabase.ts, money.ts (kuruş + formatTL), rbac.ts, image.ts, dates.ts
+```
+
+- **Route guards** by role + status (pending → waiting screen; wrong role → redirect). Guards mirror RLS — never substitute for it.
+- **Design patterns from the handoff, implemented once and reused:** draft + explicit Kaydet/Vazgeç floating popup (hidden while any modal is open); one shared confirm-before-delete dialog; pickers open with nothing pre-selected; Bir Kez/Tekrarlanan segmented toggle revealing a frequency picker.
+- **Motion:** iOS push/pop slide+fade (0.32s, `cubic-bezier(.22,1,.36,1)`), modal scale 0.92→1 with overshoot, press-scale 0.96 — as CSS transitions per the design README.
+- **Layout:** mobile-first 100% width, `max-width: 480px` centered on desktop; Tailwind v4 `@theme` maps the design tokens (ink `#111`, muted `#888`/`#ADADAD`, fills `#F7F7F7`/`#F2F2F2`, success `#15803D`/`#F0FDF4`, danger `#C62828`/`#FEF3F2`, amber `#D97706`, radii 10–20px, Figtree).
+
+## 9. PWA (first-class requirement)
+
+- **Manifest:** `name/short_name: "PilotGarage"`, `lang: "tr"`, `display: "standalone"`, `orientation: "portrait"`, `theme_color: "#111111"`, `background_color: "#ffffff"`, icons 192/512 + maskable, `start_url`/`scope: "/PilotGarage/"`; `apple-touch-icon` 180px + iOS meta tags for standalone mode.
+- **Service worker:** Workbox `generateSW`; precache app shell + fonts; `registerType: 'prompt'` with an in-app "Yeni sürüm hazır — Güncelle" toast (never auto-reload mid-form — finance data entry must not be interrupted).
+- **Offline policy (MVP, deliberate):** shell and fonts work offline; Supabase calls are network-only with a visible offline banner. **No offline writes and no cached finance data** — stale balances and sync conflicts are unacceptable in the finance section (KISS + correctness over convenience).
+- **Safe areas:** `viewport-fit=cover`; bottom nav pads with `env(safe-area-inset-bottom)` (the design's home-indicator gap).
+- Install instructions (Add to Home Screen for iOS Safari) shown on first login.
+
+## 10. Deployment & CI/CD
+
+- **`deploy.yml`:** on push to `main` → `npm ci` → typecheck + `vite build` (Vite `base: '/PilotGarage/'`) → deploy to GitHub Pages.
+- **SPA fallback from day one:** `public/404.html` redirect + restore script in `index.html` (GitHub Pages + BrowserRouter requirement).
+- **`keepalive.yml`:** pings the DB every 6 days (Supabase free tier pauses after 7 idle days).
+- **Repo secrets:** `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY` (public-safe by design — RLS is the boundary), `SUPABASE_SECRET_KEY` (Edge Function deploys only, never in the bundle).
+
+## 11. Timezone & scheduling
+
+Turkey is UTC+3 year-round (no DST since 2016). `pg_cron` runs in UTC → the daily materializer (sabit giderler, maaş auto-payments, tekrar kuralları) runs at **21:05 UTC = 00:05 Istanbul**. All `odeme_gunu` values are capped at 28 to avoid short-month bugs. Required extensions: `pgcrypto`, `pg_cron` (enable in Database → Extensions before migrations).
+
+## 12. Security checklist (OWASP-aligned)
+
+- **A01 Broken Access Control:** RLS deny-by-default; NULL-role/pending case explicitly tested; every policy re-verified when a feature touches it.
+- **A02/A04:** no sensitive plaintext beyond operational need; salaries visible to Yönetici only; secret key never client-side.
+- **A03 Injection:** supabase-js parameterization; zod validation on every form; no string-built SQL in RPCs.
+- **A05:** signups gated (§4); Supabase Auth rate limits on; no debug endpoints.
+- **A07:** session via Supabase Auth (PKCE); `DISABLED` kills access on next request.
+- **A08/A06:** lockfile committed; `npm audit` in CI; latest stable deps at scaffold.
+- **A09:** `audit_log` on all money mutations, approvals, role changes.
+- XSS: React escaping only, no `dangerouslySetInnerHTML`; CSV/export formula-injection guard if exports are added later.
+
+## 13. Delivery plan
+
+- **Sprint 0 — Foundation:** scaffold (Vite/React 19/TS/Tailwind 4/PWA), Supabase project + migrations (schema, helpers, RLS, cron, seed: 2 businesses + default kategoriler), auth + pending gate + İşletme Seç, app shell with both navs, CI/CD (deploy + keepalive + 404.html), design tokens.
+- **Sprint 1 — Kayıt module:** Personel Home (grouped by durum + filters), Yeni Kayıt form (paket picker, photos with compression), Kayıt Detay (edit, durum change with confirm, lightbox), TAMAMLANDI→pending gelir trigger.
+- **Sprint 2 — Finance core:** Yönetim home (period widgets, cash-flow chart, spending categories, recurring preview), Gelir/Gider Ekle, **Onay queue**, Tüm İşlemler (type/category/date + custom range filters), kategoriler management.
+- **Sprint 3 — Yönetim modules:** Paketler CRUD, Personel (roster, detail with draft/save popup, rol değiştir, işletme erişimi selector, avans, maaş payment + auto-pay cron), İşletmeler cari hesap (hareketler, Kasaya Yansıt), Sabit Giderler + cron, İşletme Ayarları.
+- **Sprint 4 — Hardening:** tekrar kuralları, audit review, full RBAC walkthrough per role, PWA install/offline test on real iOS + Android, pre-launch checklist (§15).
+
+## 14. Provisional decisions (flag if you disagree)
+
+1. Maaş + avans payments create **directly-approved GİDER işlemler** — they hit the kasa immediately, skipping Onay (owner decision 2026-07-07; the prototype only logged them locally).
+2. Kayıt completion auto-queues the paket price as pending gelir; kayıt without paket queues nothing.
+3. Yönetici always has both businesses (no membership rows needed).
+4. **Signup approval stays Yönetici-only** — approving a signup assigns a role, so I placed it under the "Muhasebe can't change roles" rule (owner decision 2026-07-07). Flag if Muhasebe should be able to approve signups too.
+5. Paket/kategori deletes are soft (history preserved).
+
+## 15. Pre-launch checklist (mandatory before production)
+
+- [ ] Every role walked through every screen — no forbidden section reachable (UI *and* direct API)
+- [ ] Pending/NULL-role user gets zero rows on every table (automated RLS test)
+- [ ] Muhasebe cannot change any user's role, status, or business access — verified in the UI *and* against the API/RPCs directly
+- [ ] A user assigned to one business sees zero rows from the other business on every table (automated RLS test)
+- [ ] Onay gate verified: no path writes an `ONAYLANDI` işlem except `approve_islem` and the maaş/avans RPCs; approved rows immutable
+- [ ] `v_kasa_ozet` equals hand-computed totals on seeded data (all period filters)
+- [ ] Cari yansıt → approve/reject → `kasa_durumu` round-trip correct
+- [ ] Cron ran in staging: sabit gider + maaş + tekrar entries appear at 00:05 Istanbul
+- [ ] PWA installs on real iPhone (Safari) and Android (Chrome); offline shell + banner OK; update prompt OK
+- [ ] `npm run build` + typecheck clean; `npm audit` reviewed
+- [ ] Keepalive workflow green twice consecutively
+- [ ] Secrets present in repo; secret key absent from bundle (grep `dist/`)
