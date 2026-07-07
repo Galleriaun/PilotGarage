@@ -1,4 +1,5 @@
 import { Outlet, useLocation, useNavigate } from 'react-router'
+import AccountMenu from '../components/ui/AccountMenu'
 import { useAuth } from './providers/AuthProvider'
 
 function DocIcon({ color }: { color: string }) {
@@ -120,7 +121,7 @@ const INACTIVE = '#ADADAD'
 function YoneticiNav() {
   const navigate = useNavigate()
   const { pathname } = useLocation()
-  const onHome = pathname.startsWith('/yonetici')
+  const onKayit = pathname.startsWith('/yonetici') || pathname.startsWith('/kayit')
   return (
     <nav className="fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-[480px] border-t border-divider bg-white px-2 pb-[max(6px,env(safe-area-inset-bottom))] pt-[10px]">
       <div className="flex items-center">
@@ -129,18 +130,18 @@ function YoneticiNav() {
           onClick={() => void navigate('/yonetici')}
           className="flex flex-1 cursor-pointer flex-col items-center gap-[3px]"
         >
-          <DocIcon color={onHome ? ACTIVE : INACTIVE} />
+          <DocIcon color={onKayit ? ACTIVE : INACTIVE} />
           <span
             className="text-[10px] font-semibold"
-            style={{ color: onHome ? ACTIVE : INACTIVE }}
+            style={{ color: onKayit ? ACTIVE : INACTIVE }}
           >
             Kayıt
           </span>
         </button>
-        {/* Yeni Kayıt — Sprint 1 */}
         <button
           type="button"
-          aria-label="Yeni Kayıt (yakında)"
+          onClick={() => void navigate('/kayit/yeni')}
+          aria-label="Yeni Kayıt"
           className="flex flex-1 cursor-pointer items-center justify-center self-stretch"
         >
           <PlusFab size={50} />
@@ -192,8 +193,12 @@ function PersonelNav() {
             Kayıtlar
           </span>
         </button>
-        {/* Yeni Kayıt — Sprint 1 */}
-        <button type="button" aria-label="Yeni Kayıt (yakında)" className="-mt-[14px] cursor-pointer">
+        <button
+          type="button"
+          onClick={() => void navigate('/kayit/yeni')}
+          aria-label="Yeni Kayıt"
+          className="-mt-[14px] cursor-pointer"
+        >
           <PlusFab size={48} />
         </button>
         <button
@@ -206,16 +211,18 @@ function PersonelNav() {
             Bildirimler
           </span>
         </button>
-        <button
-          type="button"
-          aria-label="Profil (yakında)"
-          className="flex min-w-[52px] cursor-pointer flex-col items-center gap-[3px]"
-        >
-          <UserIcon color={INACTIVE} />
-          <span className="text-[10px] font-semibold" style={{ color: INACTIVE }}>
-            Profil
-          </span>
-        </button>
+        <AccountMenu side="top">
+          <button
+            type="button"
+            aria-label="Profil"
+            className="flex min-w-[52px] cursor-pointer flex-col items-center gap-[3px]"
+          >
+            <UserIcon color={INACTIVE} />
+            <span className="text-[10px] font-semibold" style={{ color: INACTIVE }}>
+              Profil
+            </span>
+          </button>
+        </AccountMenu>
       </div>
     </nav>
   )

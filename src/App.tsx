@@ -12,7 +12,10 @@ import PendingApproval from './features/auth/PendingApproval'
 import ResetPassword from './features/auth/ResetPassword'
 import SignIn from './features/auth/SignIn'
 import SignUp from './features/auth/SignUp'
-import HomePlaceholder from './features/home/HomePlaceholder'
+import KayitDetay from './features/kayit/KayitDetay'
+import PersonelHome from './features/kayit/PersonelHome'
+import YeniKayit from './features/kayit/YeniKayit'
+import YoneticiHome from './features/kayit/YoneticiHome'
 import UpdatePrompt from './components/UpdatePrompt'
 
 export default function App() {
@@ -32,9 +35,11 @@ export default function App() {
             <Route element={<RequireBusiness />}>
               <Route element={<AppShell />}>
                 <Route path="/" element={<HomeRedirect />} />
-                <Route path="/personel" element={<HomePlaceholder title="Ana Sayfa" />} />
+                <Route path="/personel" element={<PersonelHome />} />
+                <Route path="/kayit/yeni" element={<YeniKayit />} />
+                <Route path="/kayit/:id" element={<KayitDetay />} />
                 <Route element={<RequireRole roles={['YONETICI', 'MUHASEBE']} />}>
-                  <Route path="/yonetici" element={<HomePlaceholder title="Kayıtlar" />} />
+                  <Route path="/yonetici" element={<YoneticiHome />} />
                 </Route>
               </Route>
             </Route>

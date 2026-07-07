@@ -93,7 +93,7 @@ personel_odemeler   id, profile_id, business_id, tur ENUM(MAAS|AVANS), tutar, no
                     tarih, islem_id FK, created_by
 paketler            id, business_id, name, price, is_active BOOL                     -- soft delete
 kayitlar            id, business_id, musteri_adi, plaka, marka, model, yil, km, ruhsat_no,
-                    paket_id FK, tarih, durum ENUM(AKTIF|BEKLENEN|TAMAMLANDI),
+                    notlar, paket_id FK, tarih, durum ENUM(AKTIF|BEKLENEN|TAMAMLANDI),
                     created_by, created_at, updated_at
 kayit_fotograflar   id, kayit_id, storage_path, created_by
 kategoriler         id, business_id, tur ENUM(GELIR|GIDER), label, is_active         -- soft delete
