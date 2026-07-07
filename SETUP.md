@@ -18,6 +18,7 @@ Follow strictly in order: 1–2 backend, 3 deploy, 4 auth, 5 first Yönetici, 6 
 4. `004_cron.sql` — daily job at 21:05 UTC (= 00:05 Istanbul)
 5. `005_seed.sql` — the two businesses + default categories
 6. `006_kayit_notlar.sql` — kayıt notları column (added in Sprint 1)
+7. `007_odeme_yontemi.sql` — Nakit/Kredi Kartı on işlemler + approve RPC update
 
 ## 3. GitHub repository + Pages
 

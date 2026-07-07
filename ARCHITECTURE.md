@@ -100,6 +100,7 @@ kategoriler         id, business_id, tur ENUM(GELIR|GIDER), label, is_active    
 islemler            id, business_id, tur ENUM(GELIR|GIDER), tutar, baslik, kategori_id FK,
                     kaynak ENUM(MANUEL|KAYIT|CARI_HESAP|SABIT_GIDER|PERSONEL),
                     durum ENUM(BEKLIYOR|ONAYLANDI|REDDEDILDI),
+                    odeme_yontemi ENUM(NAKIT|KREDI_KARTI) NULL,
                     islem_tarihi, created_by, onaylayan, onaylanma_tarihi,
                     kayit_id FK NULL, cari_hareket_id FK NULL
 tekrar_kurallari    id, business_id, tur, tutar, baslik, kategori_id,
@@ -118,7 +119,8 @@ Soft deletes (`is_active`) on `paketler` and `kategoriler` because history refer
 **Rule zero: nothing touches the kasa until Yönetici or Muhasebe approves it.** Every money entry is born `BEKLIYOR` in `islemler` and only counts after `ONAYLANDI` — with **one deliberate exception** (owner decision, 2026-07-07): **maaş and avans payments (`kaynak = PERSONEL`) skip the Onay queue and are born `ONAYLANDI`**, because the person triggering them is already an approver. The `pay_maas` / `give_avans` RPCs verify the caller is an active Yönetici/Muhasebe and stamp `onaylayan` at insert; cron auto-payments on `odeme_gunu` are likewise born `ONAYLANDI` (`onaylayan = NULL`, audit-logged as system). Born-approved rows are immutable like any approved row — corrections are counter-entries.
 
 - **Balance is a view, not a column.** `v_kasa_ozet` computes gelir/gider/bakiye per business strictly from `durum = 'ONAYLANDI'` rows. Period widgets (Tümü/Bugün/Hafta/Ay) and Tüm İşlemler filter server-side over the same rows. No drift possible.
-- **State machine enforced in the DB.** Clients get `INSERT` (as `BEKLIYOR` only — enforced by CHECK/RLS `WITH CHECK`) and `SELECT`. Direct `UPDATE`/`DELETE` on `islemler` is denied. The only transitions are `approve_islem(id)` / `reject_islem(id)` — `SECURITY DEFINER` RPCs that verify the caller is an active Yönetici or Muhasebe (Muhasebe business-scoped), stamp `onaylayan`/`onaylanma_tarihi`, and audit-log. A trigger rejects any mutation of a row already `ONAYLANDI`/`REDDEDILDI` — corrections are made with a counter-entry (standard accounting), never by editing history.
+- **State machine enforced in the DB.** Clients get `INSERT` (as `BEKLIYOR` only — enforced by CHECK/RLS `WITH CHECK`) and `SELECT`. Direct `UPDATE`/`DELETE` on `islemler` is denied. The only transitions are `approve_islem(id, ödeme_yöntemi?)` / `reject_islem(id)` — `SECURITY DEFINER` RPCs that verify the caller is an active Yönetici or Muhasebe (Muhasebe business-scoped), stamp `onaylayan`/`onaylanma_tarihi`, and audit-log.
+- **Ödeme yöntemi (Nakit / Kredi Kartı)** — owner decision 2026-07-07: transactions carry an optional payment method. It is *not* asked on the kayıt screens; for `KAYIT`-sourced işlemler the approver picks it in the Onay section, and `approve_islem` **refuses** to approve a `KAYIT` işlem without one (DB-enforced). Manual entries set it in Gelir/Gider Ekle (Sprint 2); maaş/avans and cron entries leave it NULL. A trigger rejects any mutation of a row already `ONAYLANDI`/`REDDEDILDI` — corrections are made with a counter-entry (standard accounting), never by editing history.
 - **Pending rows** may be deleted by their creator, Muhasebe, or Yönetici (typo escape hatch) while still `BEKLIYOR`.
 - **Linked side effects are atomic.** `approve_islem` on a `CARI_HESAP` entry sets the linked `cari_hareketler.kasa_durumu = 'YANSIDI'`; reject resets it to `'YOK'` — same transaction, exactly as the prototype behaves.
 - **No float math anywhere.** Postgres `NUMERIC` on the server; on the client all arithmetic is integer **kuruş**, with one shared `formatTL()` (`Intl.NumberFormat('tr-TR')`) and one shared amount-input parser (accepts comma decimals, validates > 0, max 2 decimals).
@@ -181,23 +183,25 @@ src/
 
 Turkey is UTC+3 year-round (no DST since 2016). `pg_cron` runs in UTC → the daily materializer (sabit giderler, maaş auto-payments, tekrar kuralları) runs at **21:05 UTC = 00:05 Istanbul**. All `odeme_gunu` values are capped at 28 to avoid short-month bugs. Required extensions: `pgcrypto`, `pg_cron` (enable in Database → Extensions before migrations).
 
-## 12. Security checklist (OWASP-aligned)
+## 12. Security checklist (OWASP Top 10 — **2025 edition**, owner requirement 2026-07-07)
 
-- **A01 Broken Access Control:** RLS deny-by-default; NULL-role/pending case explicitly tested; every policy re-verified when a feature touches it.
-- **A02/A04:** no sensitive plaintext beyond operational need; salaries visible to Yönetici only; secret key never client-side.
-- **A03 Injection:** supabase-js parameterization; zod validation on every form; no string-built SQL in RPCs.
-- **A05:** signups gated (§4); Supabase Auth rate limits on; no debug endpoints.
-- **A07:** session via Supabase Auth (PKCE); `DISABLED` kills access on next request.
-- **A08/A06:** lockfile committed; `npm audit` in CI; latest stable deps at scaffold.
-- **A09:** `audit_log` on all money mutations, approvals, role changes.
-- XSS: React escaping only, no `dangerouslySetInnerHTML`; CSV/export formula-injection guard if exports are added later.
+- **A01 Broken Access Control:** RLS deny-by-default on every table; NULL-role/pending user gets zero rows (explicitly tested); role, status, and business access writable only through Yönetici-gated RPCs; storage paths business-scoped; every policy re-verified when a feature touches it.
+- **A02 Security Misconfiguration:** automatic-RLS event trigger enabled on the Supabase project; storage bucket private; signups gated by approval (§4); auth Site URL + redirect allowlist configured; secret key never in the client bundle (grep `dist/` pre-launch).
+- **A03 Software Supply Chain Failures:** exact-pinned dependency versions + committed lockfile; `npm audit` (production deps, high+) blocks CI; GitHub Actions pinned by version; deploys only from `main` on GitHub-hosted runners.
+- **A04 Cryptographic Failures:** TLS end to end (Pages + Supabase); no sensitive plaintext beyond operational need; salaries readable only by Yönetici/Muhasebe within business scope; no custom crypto.
+- **A05 Injection:** supabase-js parameterization; no string-built SQL in RPCs (`set search_path = public` on every `SECURITY DEFINER` function); React auto-escaping, no `dangerouslySetInnerHTML`; CSV formula-injection guard if exports are added later.
+- **A06 Insecure Design:** the finance invariants are *designed into* Postgres — Onay state machine, immutable decided rows, derived-only balances, counter-entry corrections — so no client bug can corrupt the kasa.
+- **A07 Authentication Failures:** Supabase Auth (PKCE) sessions; 8+ char passwords; auth rate limits on; `DISABLED` cuts access at the next request via RLS, not just the UI.
+- **A08 Software or Data Integrity Failures:** immutability trigger on decided işlemler; partial unique indexes dedupe cron reruns (a re-fired job can never double-post money); `audit_log` is insert-only with no client write path.
+- **A09 Security Logging & Alerting Failures:** `audit_log` captures every money mutation, approval/rejection, and role/status/business-access change with actor + timestamp; Yönetici-readable.
+- **A10 Mishandling of Exceptional Conditions:** RPCs validate-then-act and `raise` on any violation, rolling back the whole transaction — no partial money writes; the client surfaces failures in Turkish (never swallows them); photo-upload failures are reported, never silent.
 
 ## 13. Delivery plan
 
 - **Sprint 0 — Foundation:** scaffold (Vite/React 19/TS/Tailwind 4/PWA), Supabase project + migrations (schema, helpers, RLS, cron, seed: 2 businesses + default kategoriler), auth + pending gate + İşletme Seç, app shell with both navs, CI/CD (deploy + keepalive + 404.html), design tokens.
 - **Sprint 1 — Kayıt module:** Personel Home (grouped by durum + filters), Yeni Kayıt form (paket picker, photos with compression), Kayıt Detay (edit, durum change with confirm, lightbox), TAMAMLANDI→pending gelir trigger.
-- **Sprint 2 — Finance core:** Yönetim home (period widgets, cash-flow chart, spending categories, recurring preview), Gelir/Gider Ekle, **Onay queue**, Tüm İşlemler (type/category/date + custom range filters), kategoriler management.
-- **Sprint 3 — Yönetim modules:** Paketler CRUD, Personel (roster, detail with draft/save popup, rol değiştir, işletme erişimi selector, avans, maaş payment + auto-pay cron), İşletmeler cari hesap (hareketler, Kasaya Yansıt), Sabit Giderler + cron, İşletme Ayarları.
+- **Sprint 2 — Finance core:** Yönetim home (period widgets, cash-flow chart, spending categories, recurring preview), Gelir/Gider Ekle (incl. Nakit/Kredi Kartı choice), **Onay queue** (approval of kayıt-sourced entries requires picking Nakit/Kredi Kartı), Tüm İşlemler (type/category/date + custom range filters).
+- **Sprint 3 — Yönetim modules:** Yönetim menü (dropdown on Finans header), Paketler CRUD, Personel (roster, detail with draft/save popup, rol değiştir, işletme erişimi selector, avans, maaş payment + auto-pay cron), İşletmeler cari hesap (hareketler, Kasaya Yansıt), Sabit Giderler + cron, İşletme Ayarları (isim/telefon/adres + kategoriler management).
 - **Sprint 4 — Hardening:** tekrar kuralları, audit review, full RBAC walkthrough per role, PWA install/offline test on real iOS + Android, pre-launch checklist (§15).
 
 ## 14. Provisional decisions (flag if you disagree)
@@ -215,6 +219,7 @@ Turkey is UTC+3 year-round (no DST since 2016). `pg_cron` runs in UTC → the da
 - [ ] Muhasebe cannot change any user's role, status, or business access — verified in the UI *and* against the API/RPCs directly
 - [ ] A user assigned to one business sees zero rows from the other business on every table (automated RLS test)
 - [ ] Onay gate verified: no path writes an `ONAYLANDI` işlem except `approve_islem` and the maaş/avans RPCs; approved rows immutable
+- [ ] A `KAYIT`-sourced işlem cannot be approved without ödeme yöntemi — verified against the RPC directly, not just the UI
 - [ ] `v_kasa_ozet` equals hand-computed totals on seeded data (all period filters)
 - [ ] Cari yansıt → approve/reject → `kasa_durumu` round-trip correct
 - [ ] Cron ran in staging: sabit gider + maaş + tekrar entries appear at 00:05 Istanbul

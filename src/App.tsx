@@ -16,6 +16,9 @@ import KayitDetay from './features/kayit/KayitDetay'
 import PersonelHome from './features/kayit/PersonelHome'
 import YeniKayit from './features/kayit/YeniKayit'
 import YoneticiHome from './features/kayit/YoneticiHome'
+import Onay from './features/finans/Onay'
+import TumIslemler from './features/finans/TumIslemler'
+import Yonetim from './features/finans/Yonetim'
 import UpdatePrompt from './components/UpdatePrompt'
 
 export default function App() {
@@ -40,6 +43,9 @@ export default function App() {
                 <Route path="/kayit/:id" element={<KayitDetay />} />
                 <Route element={<RequireRole roles={['YONETICI', 'MUHASEBE']} />}>
                   <Route path="/yonetici" element={<YoneticiHome />} />
+                  <Route path="/yonetim" element={<Yonetim />} />
+                  <Route path="/yonetim/islemler" element={<TumIslemler />} />
+                  <Route path="/yonetim/onay" element={<Onay />} />
                 </Route>
               </Route>
             </Route>

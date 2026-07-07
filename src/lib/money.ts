@@ -8,11 +8,13 @@ const centTL = new Intl.NumberFormat('tr-TR', {
   maximumFractionDigits: 2,
 })
 
-/** 4825000 kuruş -> "₺48.250" · 4200055 kuruş -> "₺42.000,55" */
+/** 4825000 kuruş -> "₺48.250" · 4200055 kuruş -> "₺42.000,55" · -4825000 -> "-₺48.250" */
 export function formatTL(kurus: number, opts: { decimals?: 0 | 2 } = {}): string {
-  const decimals = opts.decimals ?? (kurus % 100 === 0 ? 0 : 2)
+  const sign = kurus < 0 ? '-' : ''
+  const abs = Math.abs(kurus)
+  const decimals = opts.decimals ?? (abs % 100 === 0 ? 0 : 2)
   const formatter = decimals === 0 ? wholeTL : centTL
-  return `₺${formatter.format(kurus / 100)}`
+  return `${sign}₺${formatter.format(abs / 100)}`
 }
 
 /**

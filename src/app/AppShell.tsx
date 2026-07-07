@@ -122,6 +122,7 @@ function YoneticiNav() {
   const navigate = useNavigate()
   const { pathname } = useLocation()
   const onKayit = pathname.startsWith('/yonetici') || pathname.startsWith('/kayit')
+  const onYonetim = pathname.startsWith('/yonetim')
   return (
     <nav className="fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-[480px] border-t border-divider bg-white px-2 pb-[max(6px,env(safe-area-inset-bottom))] pt-[10px]">
       <div className="flex items-center">
@@ -146,14 +147,16 @@ function YoneticiNav() {
         >
           <PlusFab size={50} />
         </button>
-        {/* Yönetim (finans) — Sprint 2 */}
         <button
           type="button"
-          aria-label="Yönetim (yakında)"
+          onClick={() => void navigate('/yonetim')}
           className="flex flex-1 cursor-pointer flex-col items-center gap-[3px]"
         >
-          <GridIcon color={INACTIVE} />
-          <span className="text-[10px] font-semibold" style={{ color: INACTIVE }}>
+          <GridIcon color={onYonetim ? ACTIVE : INACTIVE} />
+          <span
+            className="text-[10px] font-semibold"
+            style={{ color: onYonetim ? ACTIVE : INACTIVE }}
+          >
             Yönetim
           </span>
         </button>
