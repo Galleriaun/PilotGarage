@@ -42,7 +42,7 @@ export default function PendingApproval() {
       <p className="mb-10 max-w-[300px] text-[15px] leading-relaxed text-muted">
         {disabled
           ? 'Bu hesap devre dışı bırakıldı. Detaylar için yöneticinizle iletişime geçin.'
-          : 'Yönetici hesabınızı onaylayıp rol ve işletme atadığında uygulamayı kullanmaya başlayabilirsiniz.'}
+          : 'Yönetici hesabınızı onayladığında kullanmaya başlayabilirsiniz.'}
       </p>
       {!disabled && (
         <button

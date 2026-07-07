@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { Splash } from '../../app/guards'
+import { MIN_PASSWORD_LENGTH } from '../../lib/validation'
 import { EyeIcon } from './EyeIcon'
 
 /**
@@ -39,7 +40,7 @@ export default function ResetPassword() {
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
     setError('')
-    if (password.length < 8) {
+    if (password.length < MIN_PASSWORD_LENGTH) {
       setError('Şifre en az 8 karakter olmalı.')
       return
     }
@@ -58,7 +59,7 @@ export default function ResetPassword() {
       <h1 className="mb-9 text-center text-[28px] font-bold leading-[1.15] tracking-[-0.5px] text-ink">
         Yeni şifre belirle
       </h1>
-      <form onSubmit={(e) => void onSubmit(e)} className="flex flex-col">
+      <form noValidate onSubmit={(e) => void onSubmit(e)} className="flex flex-col">
         <div className="relative mb-5">
           <input
             type={showPw ? 'text' : 'password'}

@@ -3,6 +3,7 @@ import { Link, Navigate } from 'react-router'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { Splash } from '../../app/guards'
+import { isValidEmail, MIN_PASSWORD_LENGTH } from '../../lib/validation'
 import { BackChevron, EyeIcon } from './EyeIcon'
 
 export default function SignUp() {
@@ -25,7 +26,15 @@ export default function SignUp() {
       setError('Ad Soyad girin.')
       return
     }
-    if (password.length < 8) {
+    if (!email.trim()) {
+      setError('E-posta adresinizi girin.')
+      return
+    }
+    if (!isValidEmail(email)) {
+      setError('Geçerli bir e-posta adresi girin.')
+      return
+    }
+    if (password.length < MIN_PASSWORD_LENGTH) {
       setError('Şifre en az 8 karakter olmalı.')
       return
     }
@@ -79,7 +88,7 @@ export default function SignUp() {
         <h1 className="mb-7 text-center text-[30px] font-bold leading-[1.15] tracking-[-0.5px] text-ink">
           Kayıt ol
         </h1>
-        <form onSubmit={(e) => void onSubmit(e)} className="flex flex-col">
+        <form noValidate onSubmit={(e) => void onSubmit(e)} className="flex flex-col">
           <div className="mb-6 flex flex-col gap-[10px]">
             <input
               type="text"

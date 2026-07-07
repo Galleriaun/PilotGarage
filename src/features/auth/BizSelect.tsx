@@ -1,5 +1,4 @@
 import { useNavigate } from 'react-router'
-import { useAuth } from '../../app/providers/AuthProvider'
 import { useBusiness } from '../../app/providers/BusinessProvider'
 import { Splash } from '../../app/guards'
 import type { Business } from '../../lib/types'
@@ -81,7 +80,6 @@ function BusinessCard({ business, onSelect }: { business: Business; onSelect: ()
 
 export default function BizSelect() {
   const navigate = useNavigate()
-  const { signOut } = useAuth()
   const { businesses, businessesLoading, selectBusiness } = useBusiness()
 
   if (businessesLoading) return <Splash />
@@ -108,15 +106,6 @@ export default function BizSelect() {
             <BusinessCard key={b.id} business={b} onSelect={() => choose(b.id)} />
           ))
         )}
-      </div>
-      <div className="pt-8 text-center">
-        <button
-          type="button"
-          onClick={() => void signOut()}
-          className="cursor-pointer text-sm text-faint"
-        >
-          Çıkış yap
-        </button>
       </div>
     </div>
   )
