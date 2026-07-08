@@ -124,7 +124,7 @@ function YoneticiNav() {
   const onKayit = pathname.startsWith('/yonetici') || pathname.startsWith('/kayit')
   const onYonetim = pathname.startsWith('/yonetim')
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-[480px] border-t border-divider bg-white px-2 pb-[max(6px,env(safe-area-inset-bottom))] pt-[10px]">
+    <nav className="shrink-0 border-t border-divider bg-white px-2 pb-[max(6px,env(safe-area-inset-bottom))] pt-[10px]">
       <div className="flex items-center">
         <button
           type="button"
@@ -171,7 +171,7 @@ function PersonelNav() {
   const { pathname } = useLocation()
   const onHome = pathname.startsWith('/personel')
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-[480px] border-t border-divider bg-white px-2 pb-[max(6px,env(safe-area-inset-bottom))] pt-[10px]">
+    <nav className="shrink-0 border-t border-divider bg-white px-2 pb-[max(6px,env(safe-area-inset-bottom))] pt-[10px]">
       <div className="flex items-center justify-around">
         <button
           type="button"
@@ -235,8 +235,8 @@ export default function AppShell() {
   const { profile } = useAuth()
   const isPersonel = profile?.role === 'PERSONEL'
   return (
-    <div className="mx-auto flex min-h-dvh w-full max-w-[480px] flex-col bg-white">
-      <main className="flex-1 pb-28">
+    <div className="mx-auto flex h-dvh w-full max-w-[480px] flex-col overflow-hidden bg-white">
+      <main className="flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain">
         <Outlet />
       </main>
       {isPersonel ? <PersonelNav /> : <YoneticiNav />}
