@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router'
 import { useBusiness } from '../../app/providers/BusinessProvider'
 import AccountMenu from '../../components/ui/AccountMenu'
@@ -368,20 +369,26 @@ export default function Yonetim() {
       )}
       <div className="h-6" />
 
-      {/* Onay floating button */}
-      {pending.length > 0 && (
+      {/* Onay floating button — always visible; the badge shows only when
+          something is actually waiting. Portaled to <body>: the screen
+          entrance animation transforms the wrapper, which would hijack
+          position:fixed and pin the button to the scroll content. */}
+      {createPortal(
         <div className="pointer-events-none fixed inset-x-0 bottom-[104px] z-40 mx-auto flex w-full max-w-[480px] justify-center">
           <button
             type="button"
             onClick={() => void navigate('/yonetim/onay')}
-            className="pressable pointer-events-auto flex cursor-pointer items-center gap-2 whitespace-nowrap rounded-[10px] bg-[#1F2937] py-2 pl-[18px] pr-3 text-[17px] font-bold text-white shadow-[0_8px_20px_rgba(31,41,55,0.28)]"
+            className="pressable pointer-events-auto flex cursor-pointer items-center gap-2 whitespace-nowrap rounded-[10px] bg-[#1F2937] py-2 px-[18px] text-[17px] font-bold text-white shadow-[0_8px_20px_rgba(31,41,55,0.28)]"
           >
             <span>Onay</span>
-            <span className="inline-flex h-[22px] min-w-[22px] items-center justify-center rounded-[7px] bg-white/[.18] px-[6px] text-sm font-bold">
-              {pending.length}
-            </span>
+            {pending.length > 0 && (
+              <span className="-mr-[6px] inline-flex h-[22px] min-w-[22px] items-center justify-center rounded-[7px] bg-white/[.18] px-[6px] text-sm font-bold">
+                {pending.length}
+              </span>
+            )}
           </button>
-        </div>
+        </div>,
+        document.body,
       )}
 
       <AddTxModal

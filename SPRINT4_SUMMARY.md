@@ -58,7 +58,22 @@ Verified: deep-link reload to `/yonetim/sabit-giderler` renders the screen direc
 
 - `src/app/providers/BusinessProvider.tsx`
 
-### 6. Pre-launch code-side checks (done this sprint)
+### 6. Onay FAB: always visible + freed from the screen-transition transform
+
+Two issues, found when the owner asked "where is the floating Onay button":
+
+- It only rendered when the queue was non-empty (and Onay isn't in the Finans menu,
+  so an empty queue had no navigation path at all). Now **always visible**; the count
+  badge appears only when something is waiting.
+- `position: fixed` inside the `screen-forward` wrapper is hijacked by the entrance
+  animation's transform (a transformed ancestor becomes the containing block), pinning
+  the "floating" button to the bottom of the scroll content during transitions. The FAB
+  and `FloatingSavePopup` are now **portaled to `<body>`** (same as the Radix modals),
+  verified pixel-positioned in the browser.
+
+- `src/features/finans/Yonetim.tsx`, `src/components/ui/FloatingSavePopup.tsx`
+
+### 7. Pre-launch code-side checks (done this sprint)
 
 - `npm audit --omit=dev --audit-level=high` → **0 vulnerabilities**
 - `dist/` grep for `sb_secret` / `service_role` / `SUPABASE_SECRET` → **no matches**

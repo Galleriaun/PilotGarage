@@ -1,7 +1,13 @@
+import { createPortal } from 'react-dom'
+
 /**
  * The design's "Kaydedilmemiş değişiklik" floating bar — the established
  * draft + explicit save pattern. Render it only while there are unsaved
  * changes AND no modal is open (it must never block a modal's buttons).
+ *
+ * Portaled to <body>: the screen-forward entrance animation applies a
+ * transform to the screen wrapper, which would hijack position:fixed and
+ * anchor the bar to the scroll content instead of the viewport.
  */
 export default function FloatingSavePopup({
   onSave,
@@ -12,7 +18,7 @@ export default function FloatingSavePopup({
   onDiscard: () => void
   busy: boolean
 }) {
-  return (
+  return createPortal(
     <div className="pointer-events-none fixed inset-x-0 bottom-[104px] z-40 mx-auto w-full max-w-[480px] px-[14px]">
       <div className="rise-in pointer-events-auto flex items-center gap-[10px] rounded-[18px] bg-white py-3 pl-4 pr-3 shadow-[0_14px_38px_rgba(0,0,0,0.2)]">
         <div className="min-w-0 flex-1">
@@ -35,6 +41,7 @@ export default function FloatingSavePopup({
           {busy ? 'Kaydediliyor…' : 'Kaydet'}
         </button>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
