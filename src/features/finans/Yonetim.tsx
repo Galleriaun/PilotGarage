@@ -5,6 +5,7 @@ import AccountMenu from '../../components/ui/AccountMenu'
 import { istanbulTodayISO, monthRangeISO } from '../../lib/dates'
 import { formatTL } from '../../lib/money'
 import { BellOutlineIcon, GearIcon, SwapIcon } from '../kayit/icons'
+import FinansMenu from '../yonetim/FinansMenu'
 import AddTxModal from './AddTxModal'
 import TxCard from './TxCard'
 import {
@@ -161,8 +162,9 @@ export default function Yonetim() {
         </AccountMenu>
       </div>
 
-      <div className="px-6 pt-1">
+      <div className="flex items-center justify-between px-6 pt-1">
         <h1 className="text-[26px] font-bold tracking-[-0.4px] text-ink">Finans</h1>
+        <FinansMenu />
       </div>
 
       {isPending ? (

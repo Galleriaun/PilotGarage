@@ -120,6 +120,21 @@
   animation: modal-pop-in 0.35s cubic-bezier(0.22, 1.15, 0.36, 1) both;
 }
 
+/* Floating popup rise-in (unsaved-changes bar) */
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@utility rise-in {
+  animation: rise-in 0.34s var(--ease-screen) both;
+}
+
 /* Dropdown/menu open: fade + slide down 6px */
 @keyframes menu-slide-in {
   from {

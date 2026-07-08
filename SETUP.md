@@ -19,6 +19,12 @@ Follow strictly in order: 1–2 backend, 3 deploy, 4 auth, 5 first Yönetici, 6 
 5. `005_seed.sql` — the two businesses + default categories
 6. `006_kayit_notlar.sql` — kayıt notları column (added in Sprint 1)
 7. `007_odeme_yontemi.sql` — Nakit/Kredi Kartı on işlemler + approve RPC update
+8. `008_reject_yenidenkullanim.sql` — reject-path fixes: cari re-yansıt + kayıt geliri re-queue (Sprint 4)
+
+**After all migrations (recommended):** run `supabase/tests/rls_smoke_test.sql` —
+paste the whole file into the SQL editor and run once. It verifies RLS isolation
+and every finance invariant against the live schema, then **rolls itself back**
+(no test data survives). It must end with `ALL TESTS PASSED`.
 
 ## 3. GitHub repository + Pages
 

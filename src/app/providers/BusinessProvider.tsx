@@ -24,7 +24,7 @@ interface BusinessContextValue {
 const BusinessContext = createContext<BusinessContextValue | null>(null)
 
 export function BusinessProvider({ children }: { children: ReactNode }) {
-  const { session, profile } = useAuth()
+  const { session, profile, loading } = useAuth()
   const enabled =
     session !== null && profile !== null && profile.status === 'ACTIVE' && profile.role !== null
 
@@ -50,13 +50,15 @@ export function BusinessProvider({ children }: { children: ReactNode }) {
     setActiveId(id)
   }, [])
 
-  // Session gone -> forget the selection
+  // Signed out -> forget the selection. `session` is also null while auth
+  // is still hydrating on a cold boot — clearing then would wipe the
+  // persisted selection on every app launch (İşletme Seç on each open).
   useEffect(() => {
-    if (!session) {
+    if (!loading && !session) {
       localStorage.removeItem(STORAGE_KEY)
       setActiveId(null)
     }
-  }, [session])
+  }, [loading, session])
 
   // Exactly one accessible business -> skip İşletme Seç entirely
   useEffect(() => {

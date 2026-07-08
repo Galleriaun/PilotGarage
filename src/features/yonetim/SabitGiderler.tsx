@@ -1,0 +1,289 @@
+import { useState } from 'react'
+import { useBusiness } from '../../app/providers/BusinessProvider'
+import ConfirmDialog from '../../components/ui/ConfirmDialog'
+import { formatRelativeDate } from '../../lib/dates'
+import { formatTL, parseTLToKurus, numericStringToKurus } from '../../lib/money'
+import { useSabitGiderler, useTekrarKurallari } from '../finans/api'
+import type { SabitGider, TekrarKural, TekrarSiklik } from '../finans/types'
+import {
+  useCreateSabitGider,
+  useDeleteSabitGider,
+  useStopTekrarKural,
+  useUpdateSabitGider,
+} from './api'
+import {
+  CalendarBoxIcon,
+  FormModal,
+  GunDropdown,
+  PencilIcon,
+  ScreenHeader,
+  TrashIcon,
+  modalFieldLabel,
+  modalInputCls,
+} from './shared'
+
+interface ModalState {
+  open: boolean
+  gider: SabitGider | null
+  name: string
+  tutar: string
+  gun: number | null
+}
+
+const CLOSED: ModalState = { open: false, gider: null, name: '', tutar: '', gun: null }
+
+const SIKLIK_LABELS: Record<TekrarSiklik, string> = {
+  HAFTALIK: 'Haftalık',
+  AYLIK: 'Aylık',
+  YILLIK: 'Yıllık',
+}
+
+/** Soft-stop glyph — the rule is stopped, not deleted (history preserved). */
+function StopIcon({ size = 14 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="#C62828" strokeWidth="2">
+      <circle cx="12" cy="12" r="9" />
+      <rect x="9" y="9" width="6" height="6" rx="1" fill="#C62828" stroke="none" />
+    </svg>
+  )
+}
+
+export default function SabitGiderler() {
+  const { activeBusiness } = useBusiness()
+  const businessId = activeBusiness?.id ?? ''
+  const { data: giderler = [], isPending } = useSabitGiderler(businessId)
+  const { data: kurallar = [] } = useTekrarKurallari(businessId)
+  const createGider = useCreateSabitGider()
+  const updateGider = useUpdateSabitGider()
+  const deleteGider = useDeleteSabitGider()
+  const stopKural = useStopTekrarKural()
+
+  const [modal, setModal] = useState<ModalState>(CLOSED)
+  const [error, setError] = useState('')
+  const [deleting, setDeleting] = useState<SabitGider | null>(null)
+  const [stopping, setStopping] = useState<TekrarKural | null>(null)
+
+  const busy = createGider.isPending || updateGider.isPending
+
+  async function onSave() {
+    setError('')
+    if (!modal.name.trim()) {
+      setError('Ad girin.')
+      return
+    }
+    const kurus = parseTLToKurus(modal.tutar)
+    if (kurus === null || kurus <= 0) {
+      setError('Geçerli bir tutar girin.')
+      return
+    }
+    if (modal.gun === null || modal.gun < 1 || modal.gun > 28) {
+      setError('Ödeme günü seçin (1–28).')
+      return
+    }
+    try {
+      if (modal.gider) {
+        await updateGider.mutateAsync({
+          id: modal.gider.id,
+          name: modal.name.trim(),
+          kurus,
+          odemeGunu: modal.gun,
+        })
+      } else {
+        await createGider.mutateAsync({
+          businessId,
+          name: modal.name.trim(),
+          kurus,
+          odemeGunu: modal.gun,
+        })
+      }
+      setModal(CLOSED)
+    } catch {
+      setError('Kaydedilemedi. Tekrar deneyin.')
+    }
+  }
+
+  async function onDelete() {
+    if (!deleting) return
+    try {
+      await deleteGider.mutateAsync({ id: deleting.id })
+    } finally {
+      setDeleting(null)
+    }
+  }
+
+  async function onStop() {
+    if (!stopping) return
+    try {
+      await stopKural.mutateAsync({ id: stopping.id })
+    } finally {
+      setStopping(null)
+    }
+  }
+
+  return (
+    <div className="screen-forward">
+      <ScreenHeader
+        title="Sabit Giderler"
+        icon={<CalendarBoxIcon />}
+        iconBg="#FFF7ED"
+        onAdd={() => {
+          setError('')
+          setModal({ open: true, gider: null, name: '', tutar: '', gun: null })
+        }}
+      />
+
+      {isPending ? (
+        <div className="flex justify-center py-14">
+          <div className="h-5 w-5 animate-spin rounded-full border-2 border-divider border-t-ink" />
+        </div>
+      ) : giderler.length === 0 ? (
+        <div className="flex flex-col items-center px-6 py-12 text-center">
+          <div className="mb-[14px] flex h-[52px] w-[52px] items-center justify-center rounded-[16px] bg-field">
+            <CalendarBoxIcon color="#ADADAD" size={24} />
+          </div>
+          <div className="mb-1 text-[15px] font-bold text-ink">Henüz sabit gider yok</div>
+          <div className="text-[13px] text-muted">
+            Sağ üstteki &quot;Ekle&quot; ile ilk sabit gideri ekleyin.
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-[10px] px-6">
+          {giderler.map((sg) => (
+            <div key={sg.id} className="flex items-center gap-3 rounded-[16px] bg-card px-4 py-[14px]">
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-[15px] font-bold text-ink">{sg.name}</div>
+                <div className="mt-[2px] text-[13px] text-muted">
+                  Her ayın {sg.odeme_gunu}. günü
+                </div>
+              </div>
+              <div className="shrink-0 text-[15px] font-bold text-ink">
+                {formatTL(numericStringToKurus(String(sg.tutar)))}
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setError('')
+                  setModal({
+                    open: true,
+                    gider: sg,
+                    name: sg.name,
+                    tutar: String(numericStringToKurus(String(sg.tutar)) / 100),
+                    gun: sg.odeme_gunu,
+                  })
+                }}
+                aria-label="Düzenle"
+                className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-[9px] bg-avatar"
+              >
+                <PencilIcon size={14} />
+              </button>
+              <button
+                type="button"
+                onClick={() => setDeleting(sg)}
+                aria-label="Sil"
+                className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-[9px] bg-danger-soft"
+              >
+                <TrashIcon size={14} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {kurallar.length > 0 && (
+        <>
+          <div className="px-6 pb-3 pt-8 text-[13px] font-bold uppercase tracking-[0.6px] text-faint">
+            Tekrarlanan İşlemler
+          </div>
+          <div className="flex flex-col gap-[10px] px-6">
+            {kurallar.map((k) => (
+              <div
+                key={k.id}
+                className="flex items-center gap-3 rounded-[16px] bg-card px-4 py-[14px]"
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-[15px] font-bold text-ink">{k.baslik}</div>
+                  <div className="mt-[2px] text-[13px] text-muted">
+                    {SIKLIK_LABELS[k.siklik]} · Sonraki: {formatRelativeDate(k.next_run)}
+                  </div>
+                </div>
+                <div
+                  className="shrink-0 text-[15px] font-bold"
+                  style={{ color: k.tur === 'GELIR' ? '#15803D' : '#C62828' }}
+                >
+                  {k.tur === 'GELIR' ? '+' : '-'}
+                  {formatTL(numericStringToKurus(String(k.tutar)))}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setStopping(k)}
+                  aria-label="Durdur"
+                  className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-[9px] bg-danger-soft"
+                >
+                  <StopIcon />
+                </button>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+      <div className="h-10" />
+
+      <FormModal
+        open={modal.open}
+        title={modal.gider ? 'Sabit gideri düzenle' : 'Yeni sabit gider'}
+        error={error}
+        busy={busy}
+        onConfirm={() => void onSave()}
+        onClose={() => setModal(CLOSED)}
+      >
+        <div>
+          <div className={modalFieldLabel}>AD</div>
+          <input
+            type="text"
+            placeholder="Örn. Kira"
+            value={modal.name}
+            onChange={(e) => setModal((m) => ({ ...m, name: e.target.value }))}
+            className={modalInputCls}
+          />
+        </div>
+        <div>
+          <div className={modalFieldLabel}>TUTAR (₺)</div>
+          <input
+            type="text"
+            inputMode="decimal"
+            placeholder="0"
+            value={modal.tutar}
+            onChange={(e) => setModal((m) => ({ ...m, tutar: e.target.value }))}
+            className={modalInputCls}
+          />
+        </div>
+        <div>
+          <div className={modalFieldLabel}>ÖDEME GÜNÜ (1-28)</div>
+          <GunDropdown value={modal.gun} onChange={(gun) => setModal((m) => ({ ...m, gun }))} />
+        </div>
+      </FormModal>
+
+      <ConfirmDialog
+        open={deleting !== null}
+        title={`"${deleting?.name ?? ''}" sabit giderini sil?`}
+        message="Bu işlem geri alınamaz. Bekleyen/onaylanmış işlemler etkilenmez."
+        confirmLabel="Sil"
+        danger
+        busy={deleteGider.isPending}
+        onConfirm={() => void onDelete()}
+        onCancel={() => setDeleting(null)}
+      />
+
+      <ConfirmDialog
+        open={stopping !== null}
+        title={`"${stopping?.baslik ?? ''}" tekrarını durdur?`}
+        message="Yeni dönem işlemi oluşturulmaz. Bekleyen ve onaylanmış işlemler etkilenmez."
+        confirmLabel="Durdur"
+        danger
+        busy={stopKural.isPending}
+        onConfirm={() => void onStop()}
+        onCancel={() => setStopping(null)}
+      />
+    </div>
+  )
+}
