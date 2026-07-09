@@ -29,6 +29,23 @@ export function formatRelativeDate(iso: string): string {
   return year === currentYear ? label : `${label} ${year}`
 }
 
+/** timestamptz -> "9.07.26 - 12:34" (Istanbul) — kayıt cards' creation stamp. */
+export function formatCreatedStamp(iso: string): string {
+  const d = new Date(iso)
+  const date = new Intl.DateTimeFormat('tr-TR', {
+    timeZone: 'Europe/Istanbul',
+    day: 'numeric',
+    month: 'numeric',
+    year: '2-digit',
+  }).format(d)
+  const time = new Intl.DateTimeFormat('tr-TR', {
+    timeZone: 'Europe/Istanbul',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(d)
+  return `${date} - ${time}`
+}
+
 /** "2026-07-02" -> "02.07.2026" — Kayıt Detay's TARİH display format. */
 export function formatDateDots(iso: string): string {
   const [y, m, d] = iso.split('-')

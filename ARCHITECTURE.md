@@ -208,7 +208,7 @@ Turkey is UTC+3 year-round (no DST since 2016). `pg_cron` runs in UTC → the da
 
 1. Maaş + avans payments create **directly-approved GİDER işlemler** — they hit the kasa immediately, skipping Onay (owner decision 2026-07-07; the prototype only logged them locally).
 2. Kayıt completion auto-queues the paket price as pending gelir; kayıt without paket queues nothing.
-3. Yönetici always has both businesses (no membership rows needed).
+3. Yönetici always has both businesses. Access comes from `is_yonetici()` in RLS regardless of memberships; as of migration 010 they also carry both-business `business_members` rows (maaş 0, no auto-pay) so the owner appears in the Personel roster and can draw their own maaş/avans (owner request 2026-07-09).
 4. **Signup approval stays Yönetici-only** — approving a signup assigns a role, so I placed it under the "Muhasebe can't change roles" rule (owner decision 2026-07-07). Flag if Muhasebe should be able to approve signups too.
 5. Paket/kategori deletes are soft (history preserved).
 

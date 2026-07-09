@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { useBusiness } from '../../app/providers/BusinessProvider'
-import { formatRelativeDate } from '../../lib/dates'
+import { formatCreatedStamp, formatRelativeDate } from '../../lib/dates'
 import AccountMenu from '../../components/ui/AccountMenu'
 import { useKayitlar, usePhotoUrls } from './api'
 import { EmptyState, KayitThumb, SearchAddBar, StatusPill } from './components'
@@ -19,8 +19,48 @@ const FILTERS: { key: Filter; label: string }[] = [
 ]
 
 function cardTitle(k: Kayit): string {
-  const arac = `${k.marka} ${k.model}`.trim()
-  return arac ? `${k.plaka} — ${arac}` : k.plaka
+  return k.musteri_adi ? `${k.plaka} — ${k.musteri_adi}` : k.plaka
+}
+
+function aracLabel(k: Kayit): string {
+  return `${k.marka} ${k.model}`.trim()
+}
+
+const dotCls = 'h-[4px] w-[4px] shrink-0 rounded-full'
+
+/** Mockup's card meta rows: tarih • araç • paket chip / • creator • created. */
+export function KayitCardMeta({ k }: { k: Kayit }) {
+  const arac = aracLabel(k)
+  return (
+    <>
+      <div className="mt-[2px] flex min-w-0 items-center gap-[6px] text-xs text-muted">
+        <span className="whitespace-nowrap">{formatRelativeDate(k.tarih)}</span>
+        {arac && (
+          <>
+            <span className="shrink-0">-</span>
+            <span className="truncate">{arac}</span>
+          </>
+        )}
+        {k.paket && (
+          <span className="shrink-0 rounded-[6px] bg-[#E4E4E4] px-[7px] py-[2px] text-[10.5px] font-semibold text-[#555]">
+            {k.paket.name}
+          </span>
+        )}
+      </div>
+      <div className="mt-[4px] flex min-w-0 items-center gap-[10px] text-[11px] text-faint">
+        {k.creator && (
+          <span className="flex min-w-0 items-center gap-[5px]">
+            <span className={dotCls} style={{ background: '#C4C4C4' }} />
+            <span className="truncate">{k.creator.full_name}</span>
+          </span>
+        )}
+        <span className="flex shrink-0 items-center gap-[5px]">
+          <span className={dotCls} style={{ background: '#C4C4C4' }} />
+          {formatCreatedStamp(k.created_at)}
+        </span>
+      </div>
+    </>
+  )
 }
 
 export default function YoneticiHome() {
@@ -187,9 +227,7 @@ export default function YoneticiHome() {
                     <KayitThumb url={firstPath ? (photoUrls[firstPath] ?? null) : null} />
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-sm font-bold text-ink">{cardTitle(k)}</div>
-                      <div className="mt-[2px] truncate text-xs text-muted">
-                        {[k.musteri_adi, formatRelativeDate(k.tarih)].filter(Boolean).join(' · ')}
-                      </div>
+                      <KayitCardMeta k={k} />
                     </div>
                     <StatusPill durum={k.durum} />
                   </button>

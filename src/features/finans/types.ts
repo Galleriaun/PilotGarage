@@ -28,6 +28,8 @@ export interface Islem {
   odeme_yontemi: OdemeYontemi | null
   created_at: string
   kategori: { id: string; label: string; tur: IslemTur } | null
+  /** NULL = system entry (cron) or deleted account. */
+  creator: { full_name: string } | null
 }
 
 export interface SabitGider {

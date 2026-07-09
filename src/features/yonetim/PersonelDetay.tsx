@@ -318,7 +318,7 @@ export default function PersonelDetay() {
                 allowManual
               />
             </div>
-            {isYonetici && (
+            {isYonetici && !isSelf && (
               <div>
                 <div className="mb-2 text-[11px] font-bold tracking-[0.6px] text-faint">
                   İŞLETME ERİŞİMİ

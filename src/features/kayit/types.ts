@@ -30,6 +30,8 @@ export interface Kayit {
   created_at: string
   paket: Paket | null
   fotograflar: KayitFoto[]
+  /** NULL = deleted account. */
+  creator: { full_name: string } | null
 }
 
 export interface KayitFields {

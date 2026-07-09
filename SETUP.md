@@ -20,6 +20,8 @@ Follow strictly in order: 1–2 backend, 3 deploy, 4 auth, 5 first Yönetici, 6 
 6. `006_kayit_notlar.sql` — kayıt notları column (added in Sprint 1)
 7. `007_odeme_yontemi.sql` — Nakit/Kredi Kartı on işlemler + approve RPC update
 8. `008_reject_yenidenkullanim.sql` — reject-path fixes: cari re-yansıt + kayıt geliri re-queue (Sprint 4)
+9. `009_profil_gorunurlugu.sql` — same-business staff can read colleague names (creator display)
+10. `010_yonetici_uyelik.sql` — Yönetici gets both-business membership rows (appears in Personel roster; maaş 0, no auto-pay)
 
 **After all migrations (recommended):** run `supabase/tests/rls_smoke_test.sql` —
 paste the whole file into the SQL editor and run once. It verifies RLS isolation

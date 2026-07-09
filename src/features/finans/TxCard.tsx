@@ -90,7 +90,9 @@ export default function TxCard({ islem, variant }: { islem: Islem; variant: 'whi
       </div>
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-bold text-ink">{islem.baslik}</div>
-        <div className="mt-[1px] text-xs text-muted">{formatRelativeDate(islem.islem_tarihi)}</div>
+        <div className="mt-[1px] truncate text-xs text-muted">
+          {formatRelativeDate(islem.islem_tarihi)} · {islem.creator?.full_name ?? 'Otomatik'}
+        </div>
       </div>
       <div
         className="shrink-0 text-sm font-bold"

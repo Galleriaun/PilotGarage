@@ -30,9 +30,9 @@ Vite 8.1 · React 19.2 · TypeScript 6.0 · Tailwind CSS 4.3 · React Router 8.1
 
 ---
 
-## Database — 8 migrations
+## Database — 10 migrations
 
-Run in order in the Supabase SQL editor. **1–7 applied as of 2026-07-08; 8 is new (Sprint 4) — run it.**
+Run in order in the Supabase SQL editor. **1–7 applied as of 2026-07-08; 8–10 are new (Sprint 4) — run them.**
 
 1. `001_schema.sql` — enums, tables, `v_kasa_ozet` view (balance is a **view over ONAYLANDI rows**, never stored)
 2. `002_functions.sql` — RLS helpers, triggers, all RPCs (Onay gate, roles, cron body)
@@ -42,6 +42,8 @@ Run in order in the Supabase SQL editor. **1–7 applied as of 2026-07-08; 8 is 
 6. `006_kayit_notlar.sql` — kayıt notlar column
 7. `007_odeme_yontemi.sql` — Nakit/Kredi Kartı + 2-arg `approve_islem`
 8. `008_reject_yenidenkullanim.sql` — reject-path fixes: cari re-yansıt + kayıt geliri re-queue (Sprint 4 audit)
+9. `009_profil_gorunurlugu.sql` — same-business staff read colleague names (kayıt/işlem creator display; salaries stay finance-only)
+10. `010_yonetici_uyelik.sql` — Yönetici gets both-business membership rows so the owner appears in the Personel roster and can draw own maaş/avans (maaş 0 = no auto-pay)
 
 **Required Supabase extensions:** `pgcrypto`, `pg_cron`.
 

@@ -38,8 +38,8 @@ function OnayCard({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="truncate text-[15px] font-bold text-ink">{islem.baslik}</div>
-          <div className="mt-[2px] text-xs text-muted">
-            {formatRelativeDate(islem.islem_tarihi)}
+          <div className="mt-[2px] truncate text-xs text-muted">
+            {formatRelativeDate(islem.islem_tarihi)} · {islem.creator?.full_name ?? 'Otomatik'}
           </div>
         </div>
         <div

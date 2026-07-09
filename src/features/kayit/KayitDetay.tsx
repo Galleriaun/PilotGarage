@@ -453,7 +453,11 @@ export default function KayitDetay() {
               </div>
             )}
           </InfoCard>
-          <div className="flex-1" />
+          <InfoCard label="OLUŞTURAN">
+            <div className="truncate text-[15px] font-semibold text-ink">
+              {kayit.creator?.full_name ?? '—'}
+            </div>
+          </InfoCard>
         </div>
 
         <div className="mb-5 rounded-[14px] bg-card px-4 py-[14px]">

@@ -374,7 +374,7 @@ export default function Yonetim() {
           entrance animation transforms the wrapper, which would hijack
           position:fixed and pin the button to the scroll content. */}
       {createPortal(
-        <div className="pointer-events-none fixed inset-x-0 bottom-[104px] z-40 mx-auto flex w-full max-w-[480px] justify-center">
+        <div className="pointer-events-none fixed inset-x-0 bottom-[calc(72px+env(safe-area-inset-bottom))] z-40 mx-auto flex w-full max-w-[480px] justify-center">
           <button
             type="button"
             onClick={() => void navigate('/yonetim/onay')}

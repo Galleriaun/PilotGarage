@@ -1,17 +1,10 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { useBusiness } from '../../app/providers/BusinessProvider'
-import { formatRelativeDate } from '../../lib/dates'
 import { useKayitlar, usePhotoUrls } from './api'
 import { EmptyState, KayitThumb, SearchAddBar, StatusPill } from './components'
 import { SwapIcon } from './icons'
-import type { Kayit } from './types'
-
-function aracLabel(k: Kayit): string {
-  const marka = `${k.marka} ${k.model}`.trim()
-  const parts = [marka, k.yil ? String(k.yil) : ''].filter(Boolean)
-  return parts.join(' · ') || '—'
-}
+import { KayitCardMeta } from './YoneticiHome'
 
 export default function PersonelHome() {
   const navigate = useNavigate()
@@ -95,13 +88,12 @@ export default function PersonelHome() {
               >
                 <KayitThumb url={firstPath ? (photoUrls[firstPath] ?? null) : null} />
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-bold text-ink">{k.plaka}</div>
-                  <div className="mt-[1px] truncate text-xs text-muted">{aracLabel(k)}</div>
+                  <div className="truncate text-sm font-bold text-ink">
+                    {k.musteri_adi ? `${k.plaka} — ${k.musteri_adi}` : k.plaka}
+                  </div>
+                  <KayitCardMeta k={k} />
                 </div>
-                <div className="shrink-0 text-right">
-                  <StatusPill durum={k.durum} />
-                  <div className="mt-1 text-[11px] text-faint">{formatRelativeDate(k.tarih)}</div>
-                </div>
+                <StatusPill durum={k.durum} />
               </button>
             )
           })}

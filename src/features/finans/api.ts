@@ -5,7 +5,10 @@ import { kurusToNumericString, numericStringToKurus } from '../../lib/money'
 import type { OdemeYontemi } from '../../lib/types'
 import type { Islem, IslemTur, Kategori, SabitGider, TekrarKural, TekrarSiklik } from './types'
 
-const ISLEM_SELECT = '*, kategori:kategoriler(id,label,tur)'
+// islemler has several FKs to profiles (created_by, onaylayan) — the
+// creator embed must name its constraint explicitly.
+const ISLEM_SELECT =
+  '*, kategori:kategoriler(id,label,tur), creator:profiles!islemler_created_by_fkey(full_name)'
 
 function withKurus(rows: unknown[]): Islem[] {
   return (rows as Omit<Islem, 'kurus'>[]).map((r) => ({

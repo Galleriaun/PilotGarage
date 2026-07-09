@@ -73,7 +73,41 @@ Two issues, found when the owner asked "where is the floating Onay button":
 
 - `src/features/finans/Yonetim.tsx`, `src/components/ui/FloatingSavePopup.tsx`
 
-### 7. Pre-launch code-side checks (done this sprint)
+### 7. Creator display (owner request 2026-07-09) — ⚠️ migration `009_profil_gorunurlugu.sql`
+
+Kayıt cards (both homes), Kayıt Detay ("OLUŞTURAN" card), işlem rows (Son İşlemler /
+Tüm İşlemler) and Onay cards now show **who created the entry** next to the date;
+system entries from the cron show **"Otomatik"**. Because PERSONEL could previously
+read only their own profile row, migration 009 widens `profiles` SELECT so active
+same-business staff can resolve colleague names (name/role/status only — salaries
+live in `business_members`, still finance-only). The RLS smoke test gained checks
+for this (colleague visible, membership-less PENDING user still invisible).
+
+- `supabase/migrations/009_profil_gorunurlugu.sql`
+- `features/finans/api.ts` + `types.ts`, `TxCard.tsx`, `Onay.tsx`
+- `features/kayit/api.ts` + `types.ts`, `PersonelHome.tsx`, `YoneticiHome.tsx`, `KayitDetay.tsx`
+
+### 8. Kayıt card redesign (owner mockup 2026-07-09)
+
+Kayıt list cards now follow the owner's layout: **title** = `plaka — müşteri`; **line 2** =
+`tarih - araç` + the paket as a small chip; **line 3** = `oluşturan • creation timestamp`
+(`formatCreatedStamp`, Istanbul). Shared `KayitCardMeta` lives in `YoneticiHome.tsx`,
+reused by `PersonelHome.tsx` so both homes match.
+
+### 9. Yönetici appears in the Personel roster — ⚠️ migration `010_yonetici_uyelik.sql`
+
+Owner request: the Yönetici couldn't see themselves in Personel because Yönetici had
+**no `business_members` row** (access came only from `is_yonetici()`). Migration 010
+backfills both-business membership rows for every Yönetici (**maaş 0 / manual → the
+auto-maaş cron never touches them**), and `approve_signup` / `set_role` now create the
+rows on any future Yönetici promotion. Access is unchanged. The owner can now draw their
+own maaş/avans from their card (owner-draw choice); role/status/İşletme-Erişimi controls
+stay hidden on self. **Invariant change:** the old "Yönetici needs no membership rows"
+no longer holds — noted in `ARCHITECTURE.md §14.3`.
+
+- `supabase/migrations/010_yonetici_uyelik.sql`, `features/yonetim/PersonelDetay.tsx`
+
+### 10. Pre-launch code-side checks (done this sprint)
 
 - `npm audit --omit=dev --audit-level=high` → **0 vulnerabilities**
 - `dist/` grep for `sb_secret` / `service_role` / `SUPABASE_SECRET` → **no matches**
@@ -83,11 +117,13 @@ Two issues, found when the owner asked "where is the floating Onay button":
 
 ## What YOU need to do (in order)
 
-1. **SQL editor:** run `supabase/migrations/008_reject_yenidenkullanim.sql`
-2. **SQL editor:** run `supabase/tests/rls_smoke_test.sql` (whole file) → expect `ALL TESTS PASSED`
-3. Commit + push → deploy
-4. Walk the manual checklist below on the deployed app
-5. Replace placeholder "PG" icons in `public/icons/` before launch
+1. **SQL editor:** run `supabase/migrations/008_reject_yenidenkullanim.sql` *(done 2026-07-09)*
+2. **SQL editor:** run `supabase/migrations/009_profil_gorunurlugu.sql`
+3. **SQL editor:** run `supabase/migrations/010_yonetici_uyelik.sql`
+4. **SQL editor:** re-run `supabase/tests/rls_smoke_test.sql` (whole file) → "Success" (all checks raise on failure)
+5. Commit + push → deploy
+6. Walk the manual checklist below on the deployed app
+7. Replace placeholder "PG" icons in `public/icons/` before launch
 
 ---
 
@@ -101,6 +137,7 @@ Two issues, found when the owner asked "where is the floating Onay button":
 - [ ] **New:** reject a kayıt geliri → kayıt durumunu AKTIF'e çevir → tekrar TAMAMLANDI → gelir re-queued (bug fixed)
 - [ ] **New:** Sabit Giderler → Tekrarlanan İşlemler section lists rules; Durdur stops future materialization
 - [ ] Personel: approve a signup, change role, Avans/Maaş hit kasa immediately
+- [ ] **New:** you (Yönetici) now appear in the Personel roster of both businesses; tapping yourself shows no Rol Değiştir / Devre Dışı / İşletme Erişimi, but Avans/Maaş Öde work (owner draw)
 - [ ] Lazy loading: every screen opens (brief splash on first visit is expected); no blank screens
 
 ### As Muhasebe (2nd account)

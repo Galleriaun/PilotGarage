@@ -5,7 +5,7 @@
 -- Everything happens inside one transaction that is ROLLED BACK at the
 -- end — no test data survives, safe to run on the live project.
 --
--- Prerequisite: migrations 001–008 applied.
+-- Prerequisite: migrations 001–010 applied.
 --
 -- On success the messages end with:  ALL TESTS PASSED (rolled back)
 -- On the first failed check it stops with:  FAIL: <what broke>
@@ -203,7 +203,14 @@ begin
     when others then
       if sqlerrm like 'FAIL:%' then raise; end if; -- expected: yetkiniz yok / bulunamadı
   end;
-  raise notice 'PASS 03: PERSONEL -> kayıt only, own business only, no finance/RPC access';
+
+  -- 009: colleague names resolve for same-business staff, but a PENDING
+  -- user (no membership) stays invisible to non-Yönetici staff
+  select count(*) into n from profiles where id in (u_personel, u_muhasebe);
+  if n <> 2 then raise exception 'FAIL: personel should see own + same-business colleague profile, got %', n; end if;
+  select count(*) into n from profiles where id = u_pending;
+  if n <> 0 then raise exception 'FAIL: personel sees a PENDING (membership-less) profile'; end if;
+  raise notice 'PASS 03: PERSONEL -> kayıt only, own business only, colleague names only (009), no finance/RPC access';
 
   -- ═══ 3) DISABLED cuts access at the next request ═══
 

@@ -4,7 +4,7 @@ import { compressPhoto } from '../../lib/image'
 import type { Kayit, KayitDurum, KayitFields, Paket } from './types'
 
 const KAYIT_SELECT =
-  '*, paket:paketler(id,name,price), fotograflar:kayit_fotograflar(id,kayit_id,storage_path,created_at)'
+  '*, paket:paketler(id,name,price), fotograflar:kayit_fotograflar(id,kayit_id,storage_path,created_at), creator:profiles!kayitlar_created_by_fkey(full_name)'
 
 function sortFotograflar(kayit: Kayit): Kayit {
   return {
