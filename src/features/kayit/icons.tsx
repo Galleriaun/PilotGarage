@@ -227,14 +227,14 @@ export function CheckSmallIcon({ size = 14 }: { size?: number }) {
   )
 }
 
-export function CalendarIcon() {
+export function CalendarIcon({ color = '#111', size = 14 }: { color?: string; size?: number }) {
   return (
     <svg
-      width="14"
-      height="14"
+      width={size}
+      height={size}
       viewBox="0 0 24 24"
       fill="none"
-      stroke="#111"
+      stroke={color}
       strokeWidth="2.2"
       strokeLinecap="round"
       strokeLinejoin="round"

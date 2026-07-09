@@ -253,19 +253,22 @@ export function GunDropdown({
   onChange,
   allowManual,
   placeholder = 'Gün seç',
+  zeroLabel = 'Yok (elle ödeme)',
 }: {
   value: number | null
   onChange: (day: number) => void
-  /** true = includes "Yok (elle ödeme)" as day 0 */
+  /** true = includes the zero option ("yok") as day 0 */
   allowManual?: boolean
   placeholder?: string
+  /** label for day 0 — e.g. "Yok (tek sefer)" on Gelir/Gider Ekle */
+  zeroLabel?: string
 }) {
   const [open, setOpen] = useState(false)
   const label =
     value === null
       ? placeholder
       : value === 0
-        ? 'Yok (elle ödeme)'
+        ? zeroLabel
         : `Her ayın ${value}. günü`
   const options: number[] = allowManual
     ? [0, ...Array.from({ length: 28 }, (_, i) => i + 1)]
@@ -301,7 +304,7 @@ export function GunDropdown({
                 className="flex w-full cursor-pointer items-center justify-between gap-4 rounded-[10px] px-3 py-[11px] text-left text-[15px] font-semibold text-ink"
                 style={{ background: selected ? '#F2F2F2' : 'transparent' }}
               >
-                <span>{day === 0 ? 'Yok (elle ödeme)' : `Her ayın ${day}. günü`}</span>
+                <span>{day === 0 ? zeroLabel : `Her ayın ${day}. günü`}</span>
                 {selected && <CheckSmallIcon />}
               </button>
             )

@@ -72,6 +72,24 @@ export function monthRangeISO(year: number, month: number): { start: string; end
 }
 
 /**
+ * Next occurrence of a day-of-month (1–28) strictly AFTER today. Used when
+ * scheduling a tekrar rule alongside a just-created işlem — today's entry
+ * already covers the current period.
+ */
+export function nextOccurrenceAfterISO(dayOfMonth: number): string {
+  const today = istanbulTodayISO()
+  const [y, m, d] = today.split('-').map(Number)
+  const year = y ?? 1970
+  const month = m ?? 1
+  if ((d ?? 1) < dayOfMonth) {
+    return `${year}-${String(month).padStart(2, '0')}-${String(dayOfMonth).padStart(2, '0')}`
+  }
+  const ny = month === 12 ? year + 1 : year
+  const nm = month === 12 ? 1 : month + 1
+  return `${ny}-${String(nm).padStart(2, '0')}-${String(dayOfMonth).padStart(2, '0')}`
+}
+
+/**
  * Next occurrence of a day-of-month (1–28), Istanbul-relative, including
  * today. Used for the Sabit Ödemeler widget's due labels.
  */

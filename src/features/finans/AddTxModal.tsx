@@ -3,8 +3,9 @@ import * as Dialog from '@radix-ui/react-dialog'
 import { parseTLToKurus } from '../../lib/money'
 import type { OdemeYontemi } from '../../lib/types'
 import { ChevronDownIcon } from '../kayit/icons'
+import { GunDropdown } from '../yonetim/shared'
 import { useAddIslem, useKategoriler } from './api'
-import { ODEME_YONTEMI_LABELS, type IslemTur, type TekrarSiklik } from './types'
+import { ODEME_YONTEMI_LABELS, type IslemTur } from './types'
 
 const fieldLabelCls = 'mb-[6px] text-[11px] font-bold uppercase tracking-[0.6px] text-faint'
 const inputCls =
@@ -27,12 +28,6 @@ function CheckIcon() {
   )
 }
 
-const SIKLIK_OPTIONS: { key: TekrarSiklik; label: string }[] = [
-  { key: 'HAFTALIK', label: 'Haftalık' },
-  { key: 'AYLIK', label: 'Aylık' },
-  { key: 'YILLIK', label: 'Yıllık' },
-]
-
 interface AddTxModalProps {
   open: boolean
   tur: IslemTur
@@ -49,8 +44,7 @@ export default function AddTxModal({ open, tur, businessId, onClose }: AddTxModa
   const [kategoriId, setKategoriId] = useState<string | null>(null)
   const [kategoriOpen, setKategoriOpen] = useState(false)
   const [odemeYontemi, setOdemeYontemi] = useState<OdemeYontemi | null>(null)
-  const [tekrarlanan, setTekrarlanan] = useState(false)
-  const [siklik, setSiklik] = useState<TekrarSiklik>('AYLIK')
+  const [gun, setGun] = useState(0) // 0 = bir kez, 1–28 = her ay o gün otomatik
   const [error, setError] = useState('')
 
   const options = kategoriler.filter((k) => k.tur === tur)
@@ -62,8 +56,7 @@ export default function AddTxModal({ open, tur, businessId, onClose }: AddTxModa
     setKategoriId(null)
     setKategoriOpen(false)
     setOdemeYontemi(null)
-    setTekrarlanan(false)
-    setSiklik('AYLIK')
+    setGun(0)
     setError('')
   }
 
@@ -92,7 +85,7 @@ export default function AddTxModal({ open, tur, businessId, onClose }: AddTxModa
         baslik: baslik.trim() || (tur === 'GELIR' ? 'Gelir' : 'Gider'),
         kategoriId,
         odemeYontemi,
-        tekrar: tekrarlanan ? siklik : null,
+        odemeGunu: gun,
       })
       reset()
       onClose()
@@ -212,50 +205,12 @@ export default function AddTxModal({ open, tur, businessId, onClose }: AddTxModa
 
               <div>
                 <div className={fieldLabelCls}>TEKRAR</div>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setTekrarlanan(false)}
-                    className="flex-1 cursor-pointer rounded-[12px] py-[11px] text-center text-[13px] font-semibold"
-                    style={{
-                      background: !tekrarlanan ? '#111' : '#F2F2F2',
-                      color: !tekrarlanan ? '#fff' : '#888',
-                    }}
-                  >
-                    Bir Kez
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setTekrarlanan(true)}
-                    className="flex-1 cursor-pointer rounded-[12px] py-[11px] text-center text-[13px] font-semibold"
-                    style={{
-                      background: tekrarlanan ? '#111' : '#F2F2F2',
-                      color: tekrarlanan ? '#fff' : '#888',
-                    }}
-                  >
-                    Tekrarlanan
-                  </button>
-                </div>
-                {tekrarlanan && (
-                  <div className="menu-in mt-2 flex gap-2">
-                    {SIKLIK_OPTIONS.map((s) => {
-                      const selected = siklik === s.key
-                      return (
-                        <button
-                          key={s.key}
-                          type="button"
-                          onClick={() => setSiklik(s.key)}
-                          className="flex-1 cursor-pointer rounded-[10px] py-2 text-center text-xs font-semibold"
-                          style={{
-                            background: selected ? '#3A3A3A' : '#F2F2F2',
-                            color: selected ? '#fff' : '#888',
-                          }}
-                        >
-                          {s.label}
-                        </button>
-                      )
-                    })}
-                  </div>
+                <GunDropdown value={gun} onChange={setGun} allowManual zeroLabel="Yok (tek sefer)" />
+                {gun > 0 && (
+                  <p className="mt-[6px] text-xs leading-relaxed text-faint">
+                    Her ayın {gun}. günü aynı {tur === 'GELIR' ? 'gelir' : 'gider'} otomatik
+                    olarak onay kuyruğuna eklenir.
+                  </p>
                 )}
               </div>
             </div>

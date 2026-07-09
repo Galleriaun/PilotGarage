@@ -1,9 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
-import { istanbulTodayISO } from '../../lib/dates'
+import { istanbulTodayISO, nextOccurrenceAfterISO } from '../../lib/dates'
 import { kurusToNumericString, numericStringToKurus } from '../../lib/money'
 import type { OdemeYontemi } from '../../lib/types'
-import type { Islem, IslemTur, Kategori, SabitGider, TekrarKural, TekrarSiklik } from './types'
+import type { Islem, IslemTur, Kategori, SabitGider, TekrarKural } from './types'
 
 // islemler has several FKs to profiles (created_by, onaylayan) — the
 // creator embed must name its constraint explicitly.
@@ -22,22 +22,6 @@ async function currentUserId(): Promise<string> {
   const uid = data.session?.user.id
   if (!uid) throw new Error('Oturum bulunamadı — yeniden giriş yapın.')
   return uid
-}
-
-/**
- * Advance an ISO date one period. AYLIK/YILLIK clamp to the target month's
- * last day (Oca 31 -> Şub 28) — mirrors the server-side materializer.
- */
-export function advanceDateISO(iso: string, siklik: TekrarSiklik): string {
-  const [y = 1970, m = 1, d = 1] = iso.split('-').map(Number)
-  if (siklik === 'HAFTALIK') {
-    return new Date(Date.UTC(y, m - 1, d + 7)).toISOString().slice(0, 10)
-  }
-  const targetYear = siklik === 'YILLIK' ? y + 1 : m === 12 ? y + 1 : y
-  const targetMonth = siklik === 'YILLIK' ? m : m === 12 ? 1 : m + 1
-  const lastDay = new Date(Date.UTC(targetYear, targetMonth, 0)).getUTCDate()
-  const day = Math.min(d, lastDay)
-  return `${targetYear}-${String(targetMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`
 }
 
 // ── Queries ──────────────────────────────────────────────────
@@ -154,8 +138,8 @@ export interface AddIslemInput {
   baslik: string
   kategoriId: string | null
   odemeYontemi: OdemeYontemi
-  /** null = Bir Kez; a frequency = Tekrarlanan (rule + first pending işlem) */
-  tekrar: TekrarSiklik | null
+  /** 0 = Bir Kez; 1–28 = her ay o gün otomatik (AYLIK rule + today's işlem) */
+  odemeGunu: number
 }
 
 export function useAddIslem() {
@@ -166,7 +150,7 @@ export function useAddIslem() {
       const tarih = istanbulTodayISO()
       let tekrarKuralId: string | null = null
 
-      if (input.tekrar) {
+      if (input.odemeGunu > 0) {
         const { data, error } = await supabase
           .from('tekrar_kurallari')
           .insert({
@@ -175,8 +159,9 @@ export function useAddIslem() {
             tutar: kurusToNumericString(input.kurus),
             baslik: input.baslik,
             kategori_id: input.kategoriId,
-            siklik: input.tekrar,
-            next_run: advanceDateISO(tarih, input.tekrar), // first instance is created now
+            siklik: 'AYLIK',
+            // today's işlem covers the current period — schedule strictly after
+            next_run: nextOccurrenceAfterISO(input.odemeGunu),
             created_by: uid,
           })
           .select('id')
