@@ -186,7 +186,7 @@ export default function PersonelList() {
 
   return (
     <div className="screen-forward">
-      <ScreenHeader title="Personel" icon={<UsersIcon />} iconBg="#F0FDF4" />
+      <ScreenHeader title="Personel" icon={<UsersIcon />} iconBg="#F0FDF4" backTo="/yonetim" />
 
       {/* Onay bekleyen kayıtlar — Yönetici only */}
       {isYonetici && pendingProfiles.length > 0 && (

@@ -140,7 +140,7 @@ export default function IsletmeAyarlari() {
 
   return (
     <div className="screen-forward">
-      <ScreenHeader title="İşletme Ayarları" icon={<GearSmIcon />} iconBg="#F2F2F2" />
+      <ScreenHeader title="İşletme Ayarları" icon={<GearSmIcon />} iconBg="#F2F2F2" backTo="/yonetim" />
 
       <div className="flex flex-col gap-4 px-6">
         {/* İşletme adı */}

@@ -126,6 +126,7 @@ export default function SabitGiderler() {
         title="Sabit Giderler"
         icon={<CalendarBoxIcon />}
         iconBg="#FFF7ED"
+        backTo="/yonetim"
         onAdd={() => {
           setError('')
           setModal({ open: true, gider: null, name: '', tutar: '', gun: null })

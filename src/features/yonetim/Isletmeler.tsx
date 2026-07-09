@@ -100,6 +100,7 @@ export default function Isletmeler() {
         title="İşletmeler"
         icon={<BuildingIcon />}
         iconBg="#EEF4FF"
+        backTo="/yonetim"
         onAdd={() => {
           setError('')
           setModal({ open: true, isletme: null, name: '', note: '' })

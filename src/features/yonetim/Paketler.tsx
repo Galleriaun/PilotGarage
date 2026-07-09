@@ -76,6 +76,7 @@ export default function Paketler() {
         title="Paketler"
         icon={<TagIcon color="#E30613" />}
         iconBg="#FEF3F2"
+        backTo="/yonetim"
         onAdd={() => {
           setError('')
           setModal({ open: true, paket: null, name: '', price: '' })
