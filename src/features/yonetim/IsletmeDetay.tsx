@@ -1,14 +1,31 @@
 import { useState } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 import { useNavigate, useParams } from 'react-router'
+import ConfirmDialog from '../../components/ui/ConfirmDialog'
 import { formatTL, numericStringToKurus, parseTLToKurus } from '../../lib/money'
 import { formatRelativeDate } from '../../lib/dates'
 import { BackChevron } from '../auth/EyeIcon'
 import type { IslemTur } from '../finans/types'
 import { CalendarIcon } from '../kayit/icons'
-import { useAddHareket, useCariIsletme, useYansitHareket } from './api'
+import {
+  useAddHareket,
+  useCariIsletme,
+  useDeleteCari,
+  useDeleteHareket,
+  useUpdateCari,
+  useYansitHareket,
+} from './api'
+import type { CariHareket } from './types'
 import { bakiyeTag, cariBakiyeKurus } from './Isletmeler'
-import { Avatar, FormModal, modalFieldLabel, modalInputCls } from './shared'
+import {
+  Avatar,
+  FormModal,
+  GunDropdown,
+  PencilIcon,
+  TrashIcon,
+  modalFieldLabel,
+  modalInputCls,
+} from './shared'
 
 /** "2026-07-09" -> "09.07" — the takvim pill's compact range label. */
 function ddmm(iso: string): string {
@@ -40,21 +57,62 @@ export default function IsletmeDetay() {
   const { data: isletme, isPending, isError } = useCariIsletme(id)
   const addHareket = useAddHareket()
   const yansit = useYansitHareket()
+  const updateCari = useUpdateCari()
+  const deleteHareket = useDeleteHareket()
+  const deleteCari = useDeleteCari()
 
-  const [modal, setModal] = useState<{ open: boolean; tur: IslemTur; tutar: string; note: string }>(
-    { open: false, tur: 'GELIR', tutar: '', note: '' },
-  )
+  const [modal, setModal] = useState<{
+    open: boolean
+    tur: IslemTur
+    tutar: string
+    note: string
+    gun: number // 0 = tek sefer, 1–28 = her ay o gün otomatik
+  }>({ open: false, tur: 'GELIR', tutar: '', note: '', gun: 0 })
   const [error, setError] = useState('')
   const [yansitError, setYansitError] = useState('')
   const [yansitBusyId, setYansitBusyId] = useState<string | null>(null)
 
   const [yansitilmamis, setYansitilmamis] = useState(false)
+  const [duzenli, setDuzenli] = useState(false) // scope: only rule-generated hareketler
   const [range, setRange] = useState<{ start: string; end: string } | null>(null)
   const [dateModal, setDateModal] = useState<{ open: boolean; start: string; end: string }>({
     open: false,
     start: '',
     end: '',
   })
+
+  const [editModal, setEditModal] = useState<{ open: boolean; name: string; note: string }>({
+    open: false,
+    name: '',
+    note: '',
+  })
+  const [editError, setEditError] = useState('')
+
+  const [delModal, setDelModal] = useState<{ open: boolean; text: string }>({
+    open: false,
+    text: '',
+  })
+  const [delError, setDelError] = useState('')
+
+  const [yansitAllOpen, setYansitAllOpen] = useState(false)
+  const [yansitAllBusy, setYansitAllBusy] = useState(false)
+  const [yansitAllError, setYansitAllError] = useState('')
+
+  async function onDeleteCari() {
+    setDelError('')
+    if (delModal.text.trim().toLowerCase() !== 'pilotgarage') {
+      setDelError('Silmek için "pilotgarage" yazın.')
+      return
+    }
+    try {
+      await deleteCari.mutateAsync({ id })
+      void navigate('/yonetim/isletmeler', { replace: true })
+    } catch {
+      setDelError('Silinemedi. Tekrar deneyin.')
+    }
+  }
+  const [yansitConfirm, setYansitConfirm] = useState<CariHareket | null>(null)
+  const [deleting, setDeleting] = useState<CariHareket | null>(null)
 
   if (isPending) {
     return (
@@ -89,10 +147,12 @@ export default function IsletmeDetay() {
   }
 
   // filters narrow the HAREKETLER list only — the cari özet stays whole-account
-  const filtersActive = yansitilmamis || range !== null
+  const filtersActive = yansitilmamis || duzenli || range !== null
   const hareketler = isletme.hareketler.filter(
     (h) =>
       (!yansitilmamis || h.kasa_durumu === 'YOK') &&
+      // Boolean() also covers rows fetched before migration 011 (field absent)
+      (!duzenli || Boolean(h.tekrar_kural_id)) &&
       (!range || (h.tarih >= range.start && h.tarih <= range.end)),
   )
 
@@ -103,12 +163,16 @@ export default function IsletmeDetay() {
       setError('Geçerli bir tutar girin.')
       return
     }
+    if (!isletme) return
     try {
       await addHareket.mutateAsync({
         cariIsletmeId: id,
+        businessId: isletme.business_id,
+        cariName: isletme.name,
         tur: modal.tur,
         kurus,
         note: modal.note.trim(),
+        odemeGunu: modal.gun,
       })
       setModal((m) => ({ ...m, open: false }))
     } catch {
@@ -128,6 +192,62 @@ export default function IsletmeDetay() {
     }
   }
 
+  async function onDeleteHareket() {
+    if (!deleting) return
+    try {
+      await deleteHareket.mutateAsync({ id: deleting.id })
+    } catch {
+      setYansitError('Hareket silinemedi. Tekrar deneyin.')
+    } finally {
+      setDeleting(null)
+    }
+  }
+
+  async function onConfirmYansit() {
+    if (!yansitConfirm) return
+    const hareketId = yansitConfirm.id
+    setYansitConfirm(null)
+    await onYansit(hareketId)
+  }
+
+  async function onYansitAll() {
+    setYansitAllError('')
+    setYansitAllBusy(true)
+    let failed = 0
+    for (const h of hareketler) {
+      if (h.kasa_durumu !== 'YOK') continue
+      try {
+        await yansit.mutateAsync({ hareketId: h.id })
+      } catch {
+        failed += 1
+      }
+    }
+    setYansitAllBusy(false)
+    if (failed > 0) {
+      setYansitAllError(`${failed} hareket yansıtılamadı. Tekrar deneyin.`)
+    } else {
+      setYansitAllOpen(false)
+    }
+  }
+
+  async function onSaveEdit() {
+    setEditError('')
+    if (!editModal.name.trim()) {
+      setEditError('İşletme adı girin.')
+      return
+    }
+    try {
+      await updateCari.mutateAsync({
+        id,
+        name: editModal.name.trim(),
+        note: editModal.note.trim(),
+      })
+      setEditModal((m) => ({ ...m, open: false }))
+    } catch {
+      setEditError('Kaydedilemedi. Tekrar deneyin.')
+    }
+  }
+
   return (
     <div className="screen-forward">
       <div className="px-6 pt-4">
@@ -143,12 +263,34 @@ export default function IsletmeDetay() {
 
       <div className="flex items-center gap-[14px] px-6 pt-3">
         <Avatar name={isletme.name} size={60} />
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <h1 className="truncate text-[22px] font-bold tracking-[-0.3px] text-ink">
             {isletme.name}
           </h1>
           <div className="mt-[2px] truncate text-sm text-muted">{isletme.note || '—'}</div>
         </div>
+        <button
+          type="button"
+          aria-label="İşletmeyi düzenle"
+          onClick={() => {
+            setEditError('')
+            setEditModal({ open: true, name: isletme.name, note: isletme.note })
+          }}
+          className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-[10px] bg-field"
+        >
+          <PencilIcon size={15} />
+        </button>
+        <button
+          type="button"
+          aria-label="İşletmeyi sil"
+          onClick={() => {
+            setDelError('')
+            setDelModal({ open: true, text: '' })
+          }}
+          className="ml-2 flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-[10px] bg-danger-soft"
+        >
+          <TrashIcon size={15} />
+        </button>
       </div>
 
       <div className="flex flex-col gap-4 px-6 pt-[22px]">
@@ -183,7 +325,7 @@ export default function IsletmeDetay() {
               type="button"
               onClick={() => {
                 setError('')
-                setModal({ open: true, tur, tutar: '', note: '' })
+                setModal({ open: true, tur, tutar: '', note: '', gun: 0 })
               }}
               className="pressable flex flex-1 cursor-pointer items-center justify-center gap-[6px] whitespace-nowrap rounded-[13px] bg-card px-1 py-[13px]"
             >
@@ -197,40 +339,61 @@ export default function IsletmeDetay() {
 
         {/* Hareketler */}
         <div>
-          <div className="mb-2 flex items-center justify-between gap-2">
-            <div className="text-[11px] font-bold tracking-[0.6px] text-faint">HAREKETLER</div>
-            <div className="flex gap-[6px]">
-              <button
-                type="button"
-                onClick={() => setYansitilmamis((v) => !v)}
-                className="cursor-pointer whitespace-nowrap rounded-[16px] px-3 py-[6px] text-xs font-semibold"
-                style={{
-                  background: yansitilmamis ? '#111' : '#F2F2F2',
-                  color: yansitilmamis ? '#fff' : '#888',
-                }}
-              >
-                Yansıtılmamış
-              </button>
-              <button
-                type="button"
-                onClick={() =>
-                  setDateModal({ open: true, start: range?.start ?? '', end: range?.end ?? '' })
-                }
-                aria-label="Tarih aralığı seç"
-                className="flex cursor-pointer items-center gap-[5px] whitespace-nowrap rounded-[16px] px-[10px] py-[6px] text-xs font-semibold"
-                style={{
-                  background: range ? '#111' : '#F2F2F2',
-                  color: range ? '#fff' : '#888',
-                }}
-              >
-                <CalendarIcon size={13} color={range ? '#fff' : '#888'} />
-                {range && (
-                  <span>
-                    {ddmm(range.start)} – {ddmm(range.end)}
-                  </span>
-                )}
-              </button>
-            </div>
+          <div className="mb-2 text-[11px] font-bold tracking-[0.6px] text-faint">HAREKETLER</div>
+          <div className="mb-3 flex gap-2 overflow-x-auto">
+            {(
+              [
+                { yok: false, label: 'Tümü' },
+                { yok: true, label: 'Yansıtılmamış' },
+              ] as const
+            ).map((f) => {
+              const selected = yansitilmamis === f.yok
+              return (
+                <button
+                  key={f.label}
+                  type="button"
+                  onClick={() => setYansitilmamis(f.yok)}
+                  className="cursor-pointer whitespace-nowrap rounded-[20px] px-[14px] py-2 text-[13px] font-semibold"
+                  style={{
+                    background: selected ? '#111' : '#F2F2F2',
+                    color: selected ? '#fff' : '#888',
+                  }}
+                >
+                  {f.label}
+                </button>
+              )
+            })}
+            <button
+              type="button"
+              onClick={() =>
+                setDateModal({ open: true, start: range?.start ?? '', end: range?.end ?? '' })
+              }
+              aria-label="Tarih aralığı seç"
+              className="flex cursor-pointer items-center gap-[5px] whitespace-nowrap rounded-[20px] px-3 py-2 text-[13px] font-semibold"
+              style={{
+                background: range ? '#111' : '#F2F2F2',
+                color: range ? '#fff' : '#888',
+              }}
+            >
+              <CalendarIcon size={14} color={range ? '#fff' : '#888'} />
+              {range && (
+                <span>
+                  {ddmm(range.start)} – {ddmm(range.end)}
+                </span>
+              )}
+            </button>
+            {/* Düzenli: independent scope toggle — the other filters apply within it */}
+            <button
+              type="button"
+              onClick={() => setDuzenli((v) => !v)}
+              className="ml-auto cursor-pointer whitespace-nowrap rounded-[20px] px-[14px] py-2 text-[13px] font-semibold"
+              style={{
+                background: duzenli ? '#B45309' : '#FFF7ED',
+                color: duzenli ? '#fff' : '#B45309',
+              }}
+            >
+              Düzenli
+            </button>
           </div>
           {yansitError && <p className="mb-2 text-center text-[13px] text-danger">{yansitError}</p>}
           {isletme.hareketler.length === 0 ? (
@@ -265,10 +428,18 @@ export default function IsletmeDetay() {
                       </div>
                     </div>
                     {h.kasa_durumu === 'YOK' && (
-                      <div className="mt-2 flex justify-end">
+                      <div className="mt-2 flex items-center justify-end gap-2">
                         <button
                           type="button"
-                          onClick={() => void onYansit(h.id)}
+                          onClick={() => setDeleting(h)}
+                          aria-label="Hareketi sil"
+                          className="flex h-[30px] w-[30px] shrink-0 cursor-pointer items-center justify-center rounded-[9px] bg-danger-soft"
+                        >
+                          <TrashIcon size={13} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setYansitConfirm(h)}
                           disabled={yansitBusyId === h.id}
                           className="cursor-pointer rounded-[9px] bg-ink px-3 py-[7px] text-xs font-semibold text-white disabled:opacity-60"
                         >
@@ -293,6 +464,22 @@ export default function IsletmeDetay() {
                   </div>
                 )
               })}
+            </div>
+          )}
+
+          {/* Tümünü Yansıt — visible on the Yansıtılmamış filter */}
+          {yansitilmamis && hareketler.length > 0 && (
+            <div className="mt-3 flex justify-center">
+              <button
+                type="button"
+                onClick={() => {
+                  setYansitAllError('')
+                  setYansitAllOpen(true)
+                }}
+                className="pressable cursor-pointer rounded-[12px] bg-ink px-5 py-[10px] text-[13px] font-semibold text-white"
+              >
+                Tümünü Yansıt ({hareketler.length})
+              </button>
             </div>
           )}
         </div>
@@ -325,6 +512,155 @@ export default function IsletmeDetay() {
             type="text"
             value={modal.note}
             onChange={(e) => setModal((m) => ({ ...m, note: e.target.value }))}
+            className={modalInputCls}
+          />
+        </div>
+        <div>
+          <div className={modalFieldLabel}>TEKRAR</div>
+          <GunDropdown
+            value={modal.gun}
+            onChange={(gun) => setModal((m) => ({ ...m, gun }))}
+            allowManual
+            zeroLabel="Yok (tek sefer)"
+          />
+          {modal.gun > 0 && (
+            <p className="mt-[6px] text-xs leading-relaxed text-faint">
+              Her ayın {modal.gun}. günü aynı hareket cari hesaba otomatik eklenir — kasaya
+              yansıtmak yine onayınıza bağlı kalır.
+            </p>
+          )}
+        </div>
+      </FormModal>
+
+      {/* Hareket silme onayı — only YOK hareketler are deletable (RLS-enforced) */}
+      <ConfirmDialog
+        open={deleting !== null}
+        title="Hareketi sil"
+        message={
+          deleting
+            ? `${deleting.note || (deleting.tur === 'GELIR' ? 'Gelir' : 'Gider')} (${
+                deleting.tur === 'GELIR' ? '+' : '-'
+              }${formatTL(numericStringToKurus(String(deleting.tutar)))}) silinecek. Bu işlem geri alınamaz.`
+            : ''
+        }
+        confirmLabel="Sil"
+        danger
+        busy={deleteHareket.isPending}
+        onConfirm={() => void onDeleteHareket()}
+        onCancel={() => setDeleting(null)}
+      />
+
+      {/* Kasaya Yansıt onayı (tek hareket) */}
+      <ConfirmDialog
+        open={yansitConfirm !== null}
+        title="Kasaya yansıt"
+        message={
+          yansitConfirm
+            ? `${yansitConfirm.note || (yansitConfirm.tur === 'GELIR' ? 'Gelir' : 'Gider')} (${
+                yansitConfirm.tur === 'GELIR' ? '+' : '-'
+              }${formatTL(numericStringToKurus(String(yansitConfirm.tutar)))}) onaya gönderilecek.`
+            : ''
+        }
+        confirmLabel="Yansıt"
+        busy={false}
+        onConfirm={() => void onConfirmYansit()}
+        onCancel={() => setYansitConfirm(null)}
+      />
+
+      {/* Tümünü Yansıt onayı — lists exactly what will hit the Onay queue */}
+      <FormModal
+        open={yansitAllOpen}
+        title="Tümünü Kasaya Yansıt"
+        error={yansitAllError}
+        busy={yansitAllBusy}
+        confirmLabel="Yansıt"
+        onConfirm={() => void onYansitAll()}
+        onClose={() => setYansitAllOpen(false)}
+      >
+        <p className="text-[13px] leading-relaxed text-muted">
+          Aşağıdaki {hareketler.length} hareket onay kuyruğuna gönderilecek:
+        </p>
+        <div className="flex max-h-[260px] flex-col gap-[6px] overflow-y-auto">
+          {hareketler.map((h) => (
+            <div
+              key={h.id}
+              className="flex items-center justify-between gap-3 rounded-[10px] bg-field px-3 py-[9px]"
+            >
+              <div className="min-w-0">
+                <div className="truncate text-[13px] font-semibold text-ink">
+                  {h.note || (h.tur === 'GELIR' ? 'Gelir' : 'Gider')}
+                </div>
+                <div className="text-[11px] text-muted">{formatRelativeDate(h.tarih)}</div>
+              </div>
+              <div
+                className="shrink-0 text-[13px] font-bold"
+                style={{ color: h.tur === 'GELIR' ? '#15803D' : '#C62828' }}
+              >
+                {h.tur === 'GELIR' ? '+' : '-'}
+                {formatTL(numericStringToKurus(String(h.tutar)))}
+              </div>
+            </div>
+          ))}
+        </div>
+        <p className="text-xs leading-relaxed text-faint">
+          Kasa, işlemler Onay bölümünde onaylanana kadar etkilenmez.
+        </p>
+      </FormModal>
+
+      {/* İşletmeyi sil modal — requires typing "pilotgarage" */}
+      <FormModal
+        open={delModal.open}
+        title="İşletmeyi sil"
+        error={delError}
+        busy={deleteCari.isPending}
+        confirmLabel="Sil"
+        confirmColor="#C62828"
+        onConfirm={() => void onDeleteCari()}
+        onClose={() => setDelModal({ open: false, text: '' })}
+      >
+        <p className="text-[13.5px] leading-normal text-muted">
+          <b className="text-ink">{isletme.name}</b> ve tüm hareketleri kalıcı olarak
+          silinecek. Kasaya yansımış işlemler &quot;Silinen işletme&quot; olarak kalır. Bu
+          işlem geri alınamaz.
+        </p>
+        <div>
+          <div className={modalFieldLabel}>ONAY İÇİN &quot;pilotgarage&quot; YAZIN</div>
+          <input
+            type="text"
+            value={delModal.text}
+            onChange={(e) => setDelModal((m) => ({ ...m, text: e.target.value }))}
+            placeholder="pilotgarage"
+            className={modalInputCls}
+          />
+        </div>
+      </FormModal>
+
+      {/* İşletmeyi düzenle modal */}
+      <FormModal
+        open={editModal.open}
+        title="İşletmeyi düzenle"
+        error={editError}
+        busy={updateCari.isPending}
+        onConfirm={() => void onSaveEdit()}
+        onClose={() => setEditModal((m) => ({ ...m, open: false }))}
+      >
+        <div>
+          <div className={modalFieldLabel}>İŞLETME ADI</div>
+          <input
+            type="text"
+            placeholder="Örn. Aktif Lastik Ltd."
+            value={editModal.name}
+            onChange={(e) => setEditModal((m) => ({ ...m, name: e.target.value }))}
+            className={modalInputCls}
+          />
+        </div>
+        <div>
+          <div className={modalFieldLabel}>NOT</div>
+          <input
+            type="text"
+            placeholder="Örn. Lastik ve parça tedarikçisi"
+            value={editModal.note}
+            onChange={(e) => setEditModal((m) => ({ ...m, note: e.target.value }))}
             className={modalInputCls}
           />
         </div>

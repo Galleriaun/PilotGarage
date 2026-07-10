@@ -22,6 +22,13 @@ Follow strictly in order: 1–2 backend, 3 deploy, 4 auth, 5 first Yönetici, 6 
 8. `008_reject_yenidenkullanim.sql` — reject-path fixes: cari re-yansıt + kayıt geliri re-queue (Sprint 4)
 9. `009_profil_gorunurlugu.sql` — same-business staff can read colleague names (creator display)
 10. `010_yonetici_uyelik.sql` — Yönetici gets both-business membership rows (appears in Personel roster; maaş 0, no auto-pay)
+11. `011_cari_tekrar.sql` — recurring cari hareketler: rules can target a cari işletme; cron creates the monthly hareket (kasa untouched until yansıt + Onay)
+12. `012_cari_hareket_silme.sql` — finance staff can delete a hareket while it is still `YOK` (never sent toward kasa)
+13. `013_kayit_silme.sql` — kayıt deletion goes through Onay (request → finance approves); also fixes the immutability guard blocking parent deletes of decided işlemler
+14. `014_sabit_gider_kategori.sql` — sabit giderler get an optional kategori (materializer copies it onto the queued işlem)
+15. `015_cari_silme.sql` — finance can delete a cari işletme (pending kasa entries die with it; approved işlemler stay as "Silinen işletme" history)
+16. `016_sabit_gider_otomatik.sql` — sabit giderler skip Onay: the cron creates them born `ONAYLANDI` (straight to kasa, like maaş)
+17. `017_prim.sql` — prim (bonus) payments via `give_prim` RPC; `set_role` refuses demoting the last active Yönetici
 
 **After all migrations (recommended):** run `supabase/tests/rls_smoke_test.sql` —
 paste the whole file into the SQL editor and run once. It verifies RLS isolation

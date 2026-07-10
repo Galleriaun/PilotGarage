@@ -9,6 +9,7 @@ import {
   useKayit,
   usePaketler,
   usePhotoUrls,
+  useRequestKayitSilme,
   useUpdateDurum,
   useUpdateKayit,
 } from './api'
@@ -49,6 +50,7 @@ export default function KayitDetay() {
   const updateDurum = useUpdateDurum()
   const addPhotos = useAddPhotos()
   const deletePhoto = useDeletePhoto()
+  const requestSilme = useRequestKayitSilme()
 
   const [draft, setDraft] = useState<KayitFields | null>(null)
   const editing = draft !== null
@@ -58,6 +60,7 @@ export default function KayitDetay() {
   const [lightbox, setLightbox] = useState(false)
   const [durumMenuOpen, setDurumMenuOpen] = useState(false)
   const [pendingDurum, setPendingDurum] = useState<KayitDurum | null>(null)
+  const [silConfirm, setSilConfirm] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const fotograflar = useMemo(() => kayit?.fotograflar ?? [], [kayit])
@@ -135,6 +138,17 @@ export default function KayitDetay() {
     }
   }
 
+  async function confirmSilme() {
+    setError('')
+    try {
+      await requestSilme.mutateAsync({ id })
+      setSilConfirm(false)
+    } catch {
+      setSilConfirm(false)
+      setError('Silme isteği gönderilemedi. Tekrar deneyin.')
+    }
+  }
+
   async function confirmDurumChange() {
     if (!pendingDurum) return
     try {
@@ -171,6 +185,12 @@ export default function KayitDetay() {
           {editing ? 'İptal' : 'Düzenle'}
         </button>
       </div>
+
+      {kayit.silme_talebi_at && (
+        <div className="mx-6 mt-3 rounded-[14px] bg-[#FEF3F2] px-4 py-3 text-center text-[13px] font-semibold text-danger">
+          Silme isteği Onay bölümünde bekliyor.
+        </div>
+      )}
 
       {photoFailures > 0 && (
         <p className="px-6 pt-3 text-center text-[13px] text-warn">
@@ -283,15 +303,19 @@ export default function KayitDetay() {
       )}
 
       <div className="px-6 pt-5">
-        {/* Plaka + durum pill */}
+        {/* Plaka + durum pill — labeled cards in edit mode so plaka and
+            müşteri are distinguishable at a glance */}
         <div className="mb-[6px] flex items-center justify-between gap-3">
           {editing && draft ? (
-            <input
-              type="text"
-              value={draft.plaka}
-              onChange={(e) => setDraft({ ...draft, plaka: e.target.value })}
-              className="min-w-0 flex-1 rounded-[10px] border-none bg-card px-[10px] py-2 text-2xl font-bold tracking-[1px] text-ink outline-none"
-            />
+            <div className="min-w-0 flex-1 rounded-[14px] bg-card px-4 py-[10px]">
+              <div className="mb-1 text-[11px] font-bold tracking-[0.5px] text-faint">PLAKA</div>
+              <input
+                type="text"
+                value={draft.plaka}
+                onChange={(e) => setDraft({ ...draft, plaka: e.target.value })}
+                className="w-full border-none bg-transparent p-0 text-xl font-bold tracking-[1px] text-ink outline-none"
+              />
+            </div>
           ) : (
             <h1 className="text-[28px] font-bold tracking-[1px] text-ink">{kayit.plaka}</h1>
           )}
@@ -331,12 +355,17 @@ export default function KayitDetay() {
 
         {/* Müşteri */}
         {editing && draft ? (
-          <input
-            type="text"
-            value={draft.musteri_adi}
-            onChange={(e) => setDraft({ ...draft, musteri_adi: e.target.value })}
-            className="mb-2 w-full rounded-[10px] border-none bg-card px-[10px] py-2 text-base font-bold text-ink outline-none"
-          />
+          <div className="mb-2 rounded-[14px] bg-card px-4 py-[10px]">
+            <div className="mb-1 text-[11px] font-bold tracking-[0.5px] text-faint">
+              MÜŞTERİ ADI
+            </div>
+            <input
+              type="text"
+              value={draft.musteri_adi}
+              onChange={(e) => setDraft({ ...draft, musteri_adi: e.target.value })}
+              className="w-full border-none bg-transparent p-0 text-base font-bold text-ink outline-none"
+            />
+          </div>
         ) : (
           <p className="mb-[2px] text-base font-bold text-ink">{kayit.musteri_adi || '—'}</p>
         )}
@@ -485,6 +514,16 @@ export default function KayitDetay() {
             {updateKayit.isPending ? 'Kaydediliyor…' : 'Kaydet'}
           </button>
         )}
+
+        {!editing && !kayit.silme_talebi_at && (
+          <button
+            type="button"
+            onClick={() => setSilConfirm(true)}
+            className="pressable mb-3 w-full cursor-pointer rounded-[14px] bg-[#FEF3F2] py-4 text-[15px] font-semibold text-danger"
+          >
+            Kaydı Sil
+          </button>
+        )}
       </div>
       <div className="h-10" />
 
@@ -540,6 +579,17 @@ export default function KayitDetay() {
         busy={updateDurum.isPending}
         onConfirm={() => void confirmDurumChange()}
         onCancel={() => setPendingDurum(null)}
+      />
+
+      <ConfirmDialog
+        open={silConfirm}
+        title="Kaydı sil"
+        message={`${kayit.plaka} kaydı için silme isteği Onay bölümüne gönderilecek.`}
+        confirmLabel="Sil"
+        danger
+        busy={requestSilme.isPending}
+        onConfirm={() => void confirmSilme()}
+        onCancel={() => setSilConfirm(false)}
       />
     </div>
   )

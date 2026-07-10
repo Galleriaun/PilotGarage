@@ -2,13 +2,12 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router'
 import { useBusiness } from '../../app/providers/BusinessProvider'
 import { formatTL, numericStringToKurus } from '../../lib/money'
-import { useCariIsletmeler, useCreateCari, useUpdateCari } from './api'
+import { useCariIsletmeler, useCreateCari } from './api'
 import type { CariIsletme } from './types'
 import {
   Avatar,
   BuildingIcon,
   FormModal,
-  PencilIcon,
   ScreenHeader,
   modalFieldLabel,
   modalInputCls,
@@ -49,12 +48,11 @@ function ChevronRightSm() {
 
 interface ModalState {
   open: boolean
-  isletme: CariIsletme | null
   name: string
   note: string
 }
 
-const CLOSED: ModalState = { open: false, isletme: null, name: '', note: '' }
+const CLOSED: ModalState = { open: false, name: '', note: '' }
 
 export default function Isletmeler() {
   const navigate = useNavigate()
@@ -62,11 +60,10 @@ export default function Isletmeler() {
   const businessId = activeBusiness?.id ?? ''
   const { data: isletmeler = [], isPending } = useCariIsletmeler(businessId)
   const createCari = useCreateCari()
-  const updateCari = useUpdateCari()
 
   const [modal, setModal] = useState<ModalState>(CLOSED)
   const [error, setError] = useState('')
-  const busy = createCari.isPending || updateCari.isPending
+  const busy = createCari.isPending
 
   async function onSave() {
     setError('')
@@ -75,19 +72,11 @@ export default function Isletmeler() {
       return
     }
     try {
-      if (modal.isletme) {
-        await updateCari.mutateAsync({
-          id: modal.isletme.id,
-          name: modal.name.trim(),
-          note: modal.note.trim(),
-        })
-      } else {
-        await createCari.mutateAsync({
-          businessId,
-          name: modal.name.trim(),
-          note: modal.note.trim(),
-        })
-      }
+      await createCari.mutateAsync({
+        businessId,
+        name: modal.name.trim(),
+        note: modal.note.trim(),
+      })
       setModal(CLOSED)
     } catch {
       setError('Kaydedilemedi. Tekrar deneyin.')
@@ -103,7 +92,7 @@ export default function Isletmeler() {
         backTo="/yonetim"
         onAdd={() => {
           setError('')
-          setModal({ open: true, isletme: null, name: '', note: '' })
+          setModal({ open: true, name: '', note: '' })
         }}
       />
 
@@ -144,26 +133,6 @@ export default function Isletmeler() {
                   </div>
                   <div className="mt-[2px] text-[11.5px] text-muted">{tag.label}</div>
                 </div>
-                <span
-                  role="button"
-                  tabIndex={0}
-                  aria-label="İşletmeyi düzenle"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    setError('')
-                    setModal({ open: true, isletme: ci, name: ci.name, note: ci.note })
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.stopPropagation()
-                      setError('')
-                      setModal({ open: true, isletme: ci, name: ci.name, note: ci.note })
-                    }
-                  }}
-                  className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-[9px] bg-avatar"
-                >
-                  <PencilIcon size={14} />
-                </span>
                 <ChevronRightSm />
               </button>
             )
@@ -174,7 +143,7 @@ export default function Isletmeler() {
 
       <FormModal
         open={modal.open}
-        title={modal.isletme ? 'İşletmeyi düzenle' : 'Yeni işletme'}
+        title="Yeni işletme"
         error={error}
         busy={busy}
         onConfirm={() => void onSave()}

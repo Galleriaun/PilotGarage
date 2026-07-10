@@ -134,9 +134,14 @@ export default function TumIslemler() {
 
   let gelir = 0
   let gider = 0
+  let nakitNet = 0
+  let kkNet = 0
   for (const i of filtered) {
     if (i.tur === 'GELIR') gelir += i.kurus
     else gider += i.kurus
+    const signed = i.tur === 'GELIR' ? i.kurus : -i.kurus
+    if (i.odeme_yontemi === 'NAKIT') nakitNet += signed
+    else if (i.odeme_yontemi === 'KREDI_KARTI') kkNet += signed
   }
 
   const kategoriLabel =
@@ -271,18 +276,30 @@ export default function TumIslemler() {
         </div>
 
         {/* Summary */}
-        <div className="mb-4 flex items-center gap-[18px] rounded-[14px] bg-[linear-gradient(150deg,#1C1C1E,#0A0A0A)] px-4 py-3">
-          <div className="flex items-baseline gap-1">
-            <span className="text-xs font-semibold text-white/55">Toplam:</span>
-            <span className="text-[13px] font-bold text-white">{formatTL(gelir - gider)}</span>
+        <div className="mb-4 rounded-[14px] bg-[linear-gradient(150deg,#1C1C1E,#0A0A0A)] px-4 py-3">
+          <div className="flex items-center gap-[18px]">
+            <div className="flex items-baseline gap-1">
+              <span className="text-xs font-semibold text-white/55">Toplam:</span>
+              <span className="text-[13px] font-bold text-white">{formatTL(gelir - gider)}</span>
+            </div>
+            <div className="flex items-baseline gap-1">
+              <span className="text-xs font-semibold text-white/55">Gelir:</span>
+              <span className="text-[13px] font-bold text-[#4ADE80]">{formatTL(gelir)}</span>
+            </div>
+            <div className="flex items-baseline gap-1">
+              <span className="text-xs font-semibold text-white/55">Gider:</span>
+              <span className="text-[13px] font-bold text-[#F87171]">{formatTL(gider)}</span>
+            </div>
           </div>
-          <div className="flex items-baseline gap-1">
-            <span className="text-xs font-semibold text-white/55">Gelir:</span>
-            <span className="text-[13px] font-bold text-[#4ADE80]">{formatTL(gelir)}</span>
-          </div>
-          <div className="flex items-baseline gap-1">
-            <span className="text-xs font-semibold text-white/55">Gider:</span>
-            <span className="text-[13px] font-bold text-[#F87171]">{formatTL(gider)}</span>
+          <div className="mt-2 flex items-center gap-[18px] border-t border-white/10 pt-2">
+            <div className="flex items-baseline gap-1">
+              <span className="text-xs font-semibold text-white/55">Nakit:</span>
+              <span className="text-[13px] font-bold text-[#4ADE80]">{formatTL(nakitNet)}</span>
+            </div>
+            <div className="flex items-baseline gap-1">
+              <span className="text-xs font-semibold text-white/55">Kredi Kartı:</span>
+              <span className="text-[13px] font-bold text-[#60A5FA]">{formatTL(kkNet)}</span>
+            </div>
           </div>
         </div>
 

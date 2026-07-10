@@ -30,9 +30,9 @@ Vite 8.1 · React 19.2 · TypeScript 6.0 · Tailwind CSS 4.3 · React Router 8.1
 
 ---
 
-## Database — 10 migrations
+## Database — 17 migrations
 
-Run in order in the Supabase SQL editor. **1–7 applied as of 2026-07-08; 8–10 are new (Sprint 4) — run them.**
+Run in order in the Supabase SQL editor. **1–7 applied as of 2026-07-08; 8–17 are new (Sprint 4) — run them.**
 
 1. `001_schema.sql` — enums, tables, `v_kasa_ozet` view (balance is a **view over ONAYLANDI rows**, never stored)
 2. `002_functions.sql` — RLS helpers, triggers, all RPCs (Onay gate, roles, cron body)
@@ -44,11 +44,18 @@ Run in order in the Supabase SQL editor. **1–7 applied as of 2026-07-08; 8–1
 8. `008_reject_yenidenkullanim.sql` — reject-path fixes: cari re-yansıt + kayıt geliri re-queue (Sprint 4 audit)
 9. `009_profil_gorunurlugu.sql` — same-business staff read colleague names (kayıt/işlem creator display; salaries stay finance-only)
 10. `010_yonetici_uyelik.sql` — Yönetici gets both-business membership rows so the owner appears in the Personel roster and can draw own maaş/avans (maaş 0 = no auto-pay)
+11. `011_cari_tekrar.sql` — recurring cari hareketler: tekrar rules may target a cari işletme; cron materializes a monthly hareket born `YOK` (kasa untouched until yansıt + Onay)
+12. `012_cari_hareket_silme.sql` — delete policy for `YOK` hareketler (typo escape hatch; BEKLIYOR/YANSIDI stay undeletable)
+13. `013_kayit_silme.sql` — kayıt deletion through Onay: staff file a silme isteği, finance approves in the Onay queue (deletes the kayıt + its still-pending gelir; decided gelirler survive detached). Also fixes `islemler_immutable_guard` rejecting FK `ON DELETE SET NULL` detaches — deleting any parent of a decided işlem used to fail.
+14. `014_sabit_gider_kategori.sql` — `sabit_giderler.kategori_id` (optional); materializer copies it onto the queued işlem so the kategori chip shows everywhere.
+15. `015_cari_silme.sql` — `delete_cari_isletme` RPC (finance): deletes the işletme + hareketler + its rules, removes still-pending kasa entries; decided işlemler stay detached and render as "Silinen işletme: …".
+16. `016_sabit_gider_otomatik.sql` — sabit giderler born `ONAYLANDI` (owner decision 2026-07-10: pre-approved by definition, straight to kasa like maaş/avans — the **second** exception to the Onay gate).
+17. `017_prim.sql` — `PRIM` odeme_tur + `give_prim` RPC (born-ONAYLANDI gider, bonus on top of maaş, never deducted); `set_role` gains a last-active-Yönetici guard.
 
 **Required Supabase extensions:** `pgcrypto`, `pg_cron`.
 
 **Test suite:** `supabase/tests/rls_smoke_test.sql` — self-rolling-back RLS/invariant
-smoke test (13 checks); run whole file in the SQL editor, expect `ALL TESTS PASSED`.
+smoke test (15 checks); run whole file in the SQL editor, expect `ALL TESTS PASSED`.
 
 ---
 

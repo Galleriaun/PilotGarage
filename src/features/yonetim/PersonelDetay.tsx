@@ -4,12 +4,18 @@ import { useAuth } from '../../app/providers/AuthProvider'
 import { useBusiness } from '../../app/providers/BusinessProvider'
 import ConfirmDialog from '../../components/ui/ConfirmDialog'
 import FloatingSavePopup from '../../components/ui/FloatingSavePopup'
-import { istanbulTodayISO, formatRelativeDate, TR_MONTHS_FULL } from '../../lib/dates'
+import {
+  istanbulTodayISO,
+  formatDateDots,
+  formatRelativeDate,
+  TR_MONTHS_FULL,
+} from '../../lib/dates'
 import { formatTL, numericStringToKurus, parseTLToKurus } from '../../lib/money'
 import type { Role } from '../../lib/types'
 import { BackChevron } from '../auth/EyeIcon'
 import {
   useGiveAvans,
+  useGivePrim,
   useMember,
   useMemberBusinessIds,
   usePayMaas,
@@ -28,6 +34,19 @@ import {
   modalFieldLabel,
   modalInputCls,
 } from './shared'
+
+/** Pay-cycle start: the last occurrence of the otomatik ödeme günü (avans
+ *  and prim count toward the cycle, not the calendar month). gun = 0 (elle
+ *  ödeme) falls back to the calendar month. */
+function cycleStartISO(gun: number, todayISO: string): string {
+  if (gun < 1 || gun > 28) return `${todayISO.slice(0, 7)}-01`
+  const [y, m, d] = todayISO.split('-').map(Number)
+  const dd = String(gun).padStart(2, '0')
+  if (d >= gun) return `${y}-${String(m).padStart(2, '0')}-${dd}`
+  const py = m === 1 ? y - 1 : y
+  const pm = m === 1 ? 12 : m - 1
+  return `${py}-${String(pm).padStart(2, '0')}-${dd}`
+}
 
 interface Draft {
   role: Role | null
@@ -53,6 +72,7 @@ export default function PersonelDetay() {
   const updatePay = useUpdateMemberPay()
   const setBusinessAccess = useSetBusinessAccess()
   const giveAvans = useGiveAvans()
+  const givePrim = useGivePrim()
   const payMaas = usePayMaas()
   const setStatus = useSetStatus()
 
@@ -64,24 +84,33 @@ export default function PersonelDetay() {
     tutar: '',
     note: '',
   })
+  const [primModal, setPrimModal] = useState<{ open: boolean; tutar: string; note: string }>({
+    open: false,
+    tutar: '',
+    note: '',
+  })
   const [confirmMaas, setConfirmMaas] = useState(false)
   const [confirmStatus, setConfirmStatus] = useState(false)
   const [error, setError] = useState('')
   const [saveError, setSaveError] = useState('')
 
   const today = istanbulTodayISO()
-  const monthPrefix = today.slice(0, 7)
   const monthLabel = `${(TR_MONTHS_FULL[Number(today.slice(5, 7)) - 1] ?? '').toLocaleUpperCase('tr-TR')} ${today.slice(0, 4)}`
 
+  // avans/prim count toward the current PAY CYCLE (since the last otomatik
+  // ödeme günü), not the calendar month
+  const gun = member?.odeme_gunu ?? 0
+  const cycleStart = cycleStartISO(gun, today)
+
   const avanslar = useMemo(() => odemeler.filter((o) => o.tur === 'AVANS'), [odemeler])
+  const primler = useMemo(() => odemeler.filter((o) => o.tur === 'PRIM'), [odemeler])
   const maaslar = useMemo(() => odemeler.filter((o) => o.tur === 'MAAS'), [odemeler])
-  const monthAvansKurus = useMemo(
-    () =>
-      avanslar
-        .filter((a) => a.tarih.startsWith(monthPrefix))
-        .reduce((sum, a) => sum + numericStringToKurus(String(a.tutar)), 0),
-    [avanslar, monthPrefix],
-  )
+  const sumCycle = (rows: typeof odemeler) =>
+    rows
+      .filter((o) => o.tarih >= cycleStart)
+      .reduce((sum, o) => sum + numericStringToKurus(String(o.tutar)), 0)
+  const cycleAvansKurus = sumCycle(avanslar)
+  const cyclePrimKurus = sumCycle(primler)
 
   if (isPending) {
     return (
@@ -127,10 +156,11 @@ export default function PersonelDetay() {
     current.odemeGunu !== saved.odemeGunu ||
     businessIdsChanged
 
-  const anyModalOpen = roleModalOpen || avansModal.open || confirmMaas || confirmStatus
+  const anyModalOpen =
+    roleModalOpen || avansModal.open || primModal.open || confirmMaas || confirmStatus
   const saveBusy = setRole.isPending || updatePay.isPending || setBusinessAccess.isPending
 
-  const kalanKurus = current.maasKurus - monthAvansKurus
+  const kalanKurus = current.maasKurus - cycleAvansKurus
   const disabled = member.profile.status === 'DISABLED'
 
   async function onSaveDraft() {
@@ -162,6 +192,26 @@ export default function PersonelDetay() {
       }
     } catch {
       setSaveError('Kaydedilemedi. Tekrar deneyin.')
+    }
+  }
+
+  async function onGivePrim() {
+    setError('')
+    const kurus = parseTLToKurus(primModal.tutar)
+    if (kurus === null || kurus <= 0) {
+      setError('Geçerli bir tutar girin.')
+      return
+    }
+    try {
+      await givePrim.mutateAsync({
+        profileId: id,
+        businessId,
+        kurus,
+        note: primModal.note.trim(),
+      })
+      setPrimModal({ open: false, tutar: '', note: '' })
+    } catch {
+      setError('Prim verilemedi. Tekrar deneyin.')
     }
   }
 
@@ -253,7 +303,9 @@ export default function PersonelDetay() {
       <div className="flex flex-col gap-4 px-6 pt-[22px]">
         {/* Aylık özet */}
         <div className="rounded-[18px] border border-[#EDEDED] bg-white p-[18px] shadow-[0_1px_2px_rgba(0,0,0,0.03),0_4px_12px_rgba(0,0,0,0.04)]">
-          <div className="mb-3 text-[11px] font-bold tracking-[0.6px] text-faint">{monthLabel}</div>
+          <div className="mb-3 text-[11px] font-bold tracking-[0.6px] text-faint">
+            {gun > 0 ? `DÖNEM: ${formatDateDots(cycleStart)} →` : monthLabel}
+          </div>
           <div className="mb-[2px] flex items-center justify-between">
             <span className="text-[13px] text-muted">Maaş</span>
             <button
@@ -267,6 +319,11 @@ export default function PersonelDetay() {
           <div className="text-[25px] font-bold tracking-[-0.5px] text-ink">
             {formatTL(current.maasKurus, { decimals: 2 })}
           </div>
+          {cyclePrimKurus > 0 && (
+            <div className="mt-[2px] text-[13px] font-bold text-success">
+              +{formatTL(cyclePrimKurus)} prim
+            </div>
+          )}
           <div className="mt-1 text-xs text-muted">
             {current.odemeGunu > 0
               ? `Otomatik ödeme: ayın ${current.odemeGunu}'i`
@@ -277,7 +334,7 @@ export default function PersonelDetay() {
             <div className="min-w-0 flex-1">
               <div className="mb-[5px] text-xs text-muted">Verilen avans</div>
               <div className="text-lg font-bold text-warn">
-                {formatTL(monthAvansKurus, { decimals: 2 })}
+                {formatTL(cycleAvansKurus, { decimals: 2 })}
               </div>
               <div className="mt-1 text-[11px] text-faint">Maaştan düşülecek</div>
             </div>
@@ -396,6 +453,51 @@ export default function PersonelDetay() {
                   </div>
                   <div className="shrink-0 text-[15px] font-bold text-danger">
                     -{formatTL(numericStringToKurus(String(a.tutar)))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Primler */}
+        <div>
+          <div className="mb-2 flex items-center justify-between">
+            <div className="text-[11px] font-bold tracking-[0.6px] text-faint">PRİMLER</div>
+            <button
+              type="button"
+              onClick={() => {
+                setError('')
+                setPrimModal({ open: true, tutar: '', note: '' })
+              }}
+              className="flex cursor-pointer items-center gap-[5px] rounded-[10px] bg-success px-3 py-[7px]"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.8" strokeLinecap="round">
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+              <span className="text-[13px] font-semibold text-white">Prim Ver</span>
+            </button>
+          </div>
+          {primler.length === 0 ? (
+            <div className="rounded-[14px] bg-card p-[18px] text-center text-[13px] text-muted">
+              Henüz prim verilmedi.
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {primler.map((p) => (
+                <div
+                  key={p.id}
+                  className="flex items-center justify-between gap-3 rounded-[14px] bg-card px-[15px] py-[13px]"
+                >
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-semibold text-ink">
+                      {p.note || 'Prim'}
+                    </div>
+                    <div className="mt-[2px] text-xs text-muted">{formatRelativeDate(p.tarih)}</div>
+                  </div>
+                  <div className="shrink-0 text-[15px] font-bold text-success">
+                    +{formatTL(numericStringToKurus(String(p.tutar)))}
                   </div>
                 </div>
               ))}
@@ -537,6 +639,42 @@ export default function PersonelDetay() {
         </div>
         <p className="text-xs leading-relaxed text-faint">
           Avans onay beklemeden kasaya gider olarak işlenir.
+        </p>
+      </FormModal>
+
+      {/* Prim modal */}
+      <FormModal
+        open={primModal.open}
+        title="Prim Ver"
+        error={error}
+        busy={givePrim.isPending}
+        confirmLabel="Ver"
+        onConfirm={() => void onGivePrim()}
+        onClose={() => setPrimModal({ open: false, tutar: '', note: '' })}
+      >
+        <div>
+          <div className={modalFieldLabel}>TUTAR (₺)</div>
+          <input
+            type="text"
+            inputMode="decimal"
+            placeholder="0"
+            value={primModal.tutar}
+            onChange={(e) => setPrimModal((m) => ({ ...m, tutar: e.target.value }))}
+            className={modalInputCls}
+          />
+        </div>
+        <div>
+          <div className={modalFieldLabel}>AÇIKLAMA</div>
+          <input
+            type="text"
+            value={primModal.note}
+            onChange={(e) => setPrimModal((m) => ({ ...m, note: e.target.value }))}
+            className={modalInputCls}
+          />
+        </div>
+        <p className="text-xs leading-relaxed text-faint">
+          Prim maaşa ek ödemedir; onay beklemeden kasaya gider olarak işlenir, maaştan
+          düşülmez.
         </p>
       </FormModal>
 

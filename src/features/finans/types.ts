@@ -26,6 +26,8 @@ export interface Islem {
   durum: IslemDurum
   islem_tarihi: string // YYYY-MM-DD
   odeme_yontemi: OdemeYontemi | null
+  /** CARI_HESAP işlem with NULL here = its işletme was deleted (015). */
+  cari_hareket_id: string | null
   created_at: string
   kategori: { id: string; label: string; tur: IslemTur } | null
   /** NULL = system entry (cron) or deleted account. */
@@ -38,6 +40,7 @@ export interface SabitGider {
   name: string
   tutar: number | string
   odeme_gunu: number
+  kategori_id: string | null
 }
 
 export interface TekrarKural {
@@ -52,7 +55,26 @@ export interface TekrarKural {
   is_active: boolean
 }
 
+/** A kayıt whose deletion is waiting in the Onay queue (013). */
+export interface KayitSilmeTalebi {
+  id: string
+  business_id: string
+  plaka: string
+  musteri_adi: string
+  silme_talebi_at: string
+  talep_eden: { full_name: string } | null
+}
+
 export const ODEME_YONTEMI_LABELS: Record<'NAKIT' | 'KREDI_KARTI', string> = {
   NAKIT: 'Nakit',
   KREDI_KARTI: 'Kredi Kartı',
+}
+
+/** Chip colors: Nakit green, Kredi Kartı blue (owner request 2026-07-10). */
+export const ODEME_YONTEMI_CHIP: Record<
+  'NAKIT' | 'KREDI_KARTI',
+  { bg: string; color: string }
+> = {
+  NAKIT: { bg: '#F0FDF4', color: '#15803D' },
+  KREDI_KARTI: { bg: '#EEF4FF', color: '#2A5BD7' },
 }

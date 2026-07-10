@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
+import { nextOccurrenceAfterISO } from '../../lib/dates'
 import { kurusToNumericString } from '../../lib/money'
 import type { Profile, Role } from '../../lib/types'
 import type { IslemTur } from '../finans/types'
@@ -195,6 +196,20 @@ export function useSetBusinessAccess() {
   })
 }
 
+export function useGivePrim() {
+  return usePersonelMutation(
+    async (input: { profileId: string; businessId: string; kurus: number; note: string }) => {
+      const { error } = await supabase.rpc('give_prim', {
+        p_profile: input.profileId,
+        p_business: input.businessId,
+        p_tutar: kurusToNumericString(input.kurus),
+        p_note: input.note,
+      })
+      if (error) throw error
+    },
+  )
+}
+
 export function useGiveAvans() {
   return usePersonelMutation(
     async (input: { profileId: string; businessId: string; kurus: number; note: string }) => {
@@ -303,6 +318,7 @@ function useCariMutation<TInput>(fn: (input: TInput) => Promise<void>) {
       void queryClient.invalidateQueries({ queryKey: ['cari'] })
       void queryClient.invalidateQueries({ queryKey: ['cari-detail'] })
       void queryClient.invalidateQueries({ queryKey: ['islemler'] })
+      void queryClient.invalidateQueries({ queryKey: ['tekrar-kurallari'] })
     },
   })
 }
@@ -328,10 +344,52 @@ export function useUpdateCari() {
   })
 }
 
+export function useDeleteCari() {
+  return useCariMutation(async ({ id }: { id: string }) => {
+    const { error } = await supabase.rpc('delete_cari_isletme', { p_id: id })
+    if (error) throw error
+  })
+}
+
 export function useAddHareket() {
   return useCariMutation(
-    async (input: { cariIsletmeId: string; tur: IslemTur; kurus: number; note: string }) => {
+    async (input: {
+      cariIsletmeId: string
+      businessId: string
+      cariName: string
+      tur: IslemTur
+      kurus: number
+      note: string
+      /** 0 = tek sefer; 1–28 = her ay o gün otomatik hareket (AYLIK rule) */
+      odemeGunu: number
+    }) => {
       const uid = await currentUserId()
+      let kuralId: string | null = null
+
+      if (input.odemeGunu > 0) {
+        const { data, error } = await supabase
+          .from('tekrar_kurallari')
+          .insert({
+            business_id: input.businessId,
+            cari_isletme_id: input.cariIsletmeId,
+            tur: input.tur,
+            tutar: kurusToNumericString(input.kurus),
+            // cari name in the başlık so the rule is recognizable in the
+            // Tekrarlanan İşlemler management list
+            baslik: `${input.cariName} — ${
+              input.note || (input.tur === 'GELIR' ? 'Tahsilat' : 'Ödeme')
+            }`,
+            siklik: 'AYLIK',
+            // today's hareket covers the current period — schedule strictly after
+            next_run: nextOccurrenceAfterISO(input.odemeGunu),
+            created_by: uid,
+          })
+          .select('id')
+          .single()
+        if (error) throw error
+        kuralId = (data as { id: string }).id
+      }
+
       const { error } = await supabase.from('cari_hareketler').insert({
         cari_isletme_id: input.cariIsletmeId,
         tur: input.tur,
@@ -339,10 +397,23 @@ export function useAddHareket() {
         note: input.note,
         kasa_durumu: 'YOK',
         created_by: uid,
+        tekrar_kural_id: kuralId,
       })
-      if (error) throw error
+      if (error) {
+        // compensate: never leave an orphaned rule the cron would keep materializing
+        if (kuralId) await supabase.from('tekrar_kurallari').delete().eq('id', kuralId)
+        throw error
+      }
     },
   )
+}
+
+/** Delete guard lives in RLS: only kasa_durumu = 'YOK' rows are deletable. */
+export function useDeleteHareket() {
+  return useCariMutation(async ({ id }: { id: string }) => {
+    const { error } = await supabase.from('cari_hareketler').delete().eq('id', id)
+    if (error) throw error
+  })
 }
 
 /** "Kasaya Yansıt" — atomic RPC: pending işlem + hareket status BEKLIYOR. */
@@ -368,12 +439,19 @@ function useSabitMutation<TInput>(fn: (input: TInput) => Promise<void>) {
 
 export function useCreateSabitGider() {
   return useSabitMutation(
-    async (input: { businessId: string; name: string; kurus: number; odemeGunu: number }) => {
+    async (input: {
+      businessId: string
+      name: string
+      kurus: number
+      odemeGunu: number
+      kategoriId: string | null
+    }) => {
       const { error } = await supabase.from('sabit_giderler').insert({
         business_id: input.businessId,
         name: input.name,
         tutar: kurusToNumericString(input.kurus),
         odeme_gunu: input.odemeGunu,
+        kategori_id: input.kategoriId,
       })
       if (error) throw error
     },
@@ -382,13 +460,20 @@ export function useCreateSabitGider() {
 
 export function useUpdateSabitGider() {
   return useSabitMutation(
-    async (input: { id: string; name: string; kurus: number; odemeGunu: number }) => {
+    async (input: {
+      id: string
+      name: string
+      kurus: number
+      odemeGunu: number
+      kategoriId: string | null
+    }) => {
       const { error } = await supabase
         .from('sabit_giderler')
         .update({
           name: input.name,
           tutar: kurusToNumericString(input.kurus),
           odeme_gunu: input.odemeGunu,
+          kategori_id: input.kategoriId,
         })
         .eq('id', input.id)
       if (error) throw error
@@ -418,6 +503,19 @@ export function useStopTekrarKural() {
         .from('tekrar_kurallari')
         .update({ is_active: false })
         .eq('id', id)
+      if (error) throw error
+    },
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['tekrar-kurallari'] }),
+  })
+}
+
+/** Hard delete of a rule; its işlemler survive detached (tekrar_kural_id
+ *  set null — the 013 guard fix allows this even on decided rows). */
+export function useDeleteTekrarKural() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id }: { id: string }) => {
+      const { error } = await supabase.from('tekrar_kurallari').delete().eq('id', id)
       if (error) throw error
     },
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['tekrar-kurallari'] }),

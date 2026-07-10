@@ -11,6 +11,7 @@ import AddTxModal from './AddTxModal'
 import TxCard from './TxCard'
 import {
   useApprovedIslemler,
+  useKayitSilmeTalepleri,
   useMaasOdemeleri,
   usePendingIslemler,
   useSabitGiderler,
@@ -97,6 +98,8 @@ export default function Yonetim() {
 
   const { data: islemler = [], isPending, isError } = useApprovedIslemler(businessId)
   const { data: pending = [] } = usePendingIslemler(businessId)
+  const { data: silmeTalepleri = [] } = useKayitSilmeTalepleri(businessId)
+  const onayCount = pending.length + silmeTalepleri.length
   const { data: sabitGiderler = [] } = useSabitGiderler(businessId)
   const { data: tekrarKurallari = [] } = useTekrarKurallari(businessId)
   const { data: maaslar = [] } = useMaasOdemeleri(businessId)
@@ -121,6 +124,15 @@ export default function Yonetim() {
     ? sumKurus(islemler, 'GELIR', prevRange) - sumKurus(islemler, 'GIDER', prevRange)
     : null
   const delta = prevNet !== null ? bakiye - prevNet : null
+
+  // Nakit / Kredi Kartı split of the same period (net; yöntemsiz işlemler
+  // — cari, maaş/avans — are outside both buckets by design)
+  function yontemNet(y: 'NAKIT' | 'KREDI_KARTI') {
+    const rows = islemler.filter((i) => i.odeme_yontemi === y)
+    return sumKurus(rows, 'GELIR', range) - sumKurus(rows, 'GIDER', range)
+  }
+  const nakitNet = yontemNet('NAKIT')
+  const kkNet = yontemNet('KREDI_KARTI')
 
   const bakiyeLabel = formatTL(bakiye)
   const deltaLabel = delta !== null ? `${delta >= 0 ? '+' : '-'}${formatTL(Math.abs(delta))}` : ''
@@ -216,6 +228,22 @@ export default function Yonetim() {
             </div>
             <div className="mt-1 text-xs font-medium text-white/40">
               {PERIOD_SUBTITLES[period]}
+            </div>
+            <div className="mt-3 flex items-center gap-5 border-t border-white/10 pt-3">
+              <div className="flex min-w-0 items-center gap-[6px]">
+                <span className="h-[6px] w-[6px] shrink-0 rounded-full bg-[#4ADE80]" />
+                <span className="text-[11px] font-semibold text-white/50">Nakit</span>
+                <span className="truncate text-xs font-bold text-white">
+                  {formatTL(nakitNet)}
+                </span>
+              </div>
+              <div className="flex min-w-0 items-center gap-[6px]">
+                <span className="h-[6px] w-[6px] shrink-0 rounded-full bg-[#60A5FA]" />
+                <span className="whitespace-nowrap text-[11px] font-semibold text-white/50">
+                  Kredi Kartı
+                </span>
+                <span className="truncate text-xs font-bold text-white">{formatTL(kkNet)}</span>
+              </div>
             </div>
           </div>
 
@@ -381,9 +409,9 @@ export default function Yonetim() {
             className="pressable pointer-events-auto flex cursor-pointer items-center gap-2 whitespace-nowrap rounded-[10px] bg-[#1F2937] py-2 px-[18px] text-[17px] font-bold text-white shadow-[0_8px_20px_rgba(31,41,55,0.28)]"
           >
             <span>Onay</span>
-            {pending.length > 0 && (
+            {onayCount > 0 && (
               <span className="-mr-[6px] inline-flex h-[22px] min-w-[22px] items-center justify-center rounded-[7px] bg-white/[.18] px-[6px] text-sm font-bold">
-                {pending.length}
+                {onayCount}
               </span>
             )}
           </button>

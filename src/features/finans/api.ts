@@ -3,7 +3,14 @@ import { supabase } from '../../lib/supabase'
 import { istanbulTodayISO, nextOccurrenceAfterISO } from '../../lib/dates'
 import { kurusToNumericString, numericStringToKurus } from '../../lib/money'
 import type { OdemeYontemi } from '../../lib/types'
-import type { Islem, IslemTur, Kategori, SabitGider, TekrarKural } from './types'
+import type {
+  Islem,
+  IslemTur,
+  Kategori,
+  KayitSilmeTalebi,
+  SabitGider,
+  TekrarKural,
+} from './types'
 
 // islemler has several FKs to profiles (created_by, onaylayan) — the
 // creator embed must name its constraint explicitly.
@@ -129,6 +136,27 @@ export function useMaasOdemeleri(businessId: string) {
   })
 }
 
+/** Kayıts whose deletion waits in the Onay queue (013). The profiles embed
+ *  must name its FK — kayitlar has two FKs to profiles (created_by too). */
+export function useKayitSilmeTalepleri(businessId: string) {
+  return useQuery({
+    queryKey: ['kayit-silme-talepleri', businessId],
+    queryFn: async (): Promise<KayitSilmeTalebi[]> => {
+      const { data, error } = await supabase
+        .from('kayitlar')
+        .select(
+          'id, business_id, plaka, musteri_adi, silme_talebi_at, talep_eden:profiles!kayitlar_silme_talebi_by_fkey(full_name)',
+        )
+        .eq('business_id', businessId)
+        .not('silme_talebi_at', 'is', null)
+        .order('silme_talebi_at', { ascending: true }) // oldest first in the queue
+      if (error) throw error
+      return data as unknown as KayitSilmeTalebi[]
+    },
+    enabled: businessId !== '',
+  })
+}
+
 // ── Mutations ────────────────────────────────────────────────
 
 export interface AddIslemInput {
@@ -217,6 +245,50 @@ export function useApproveIslem() {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['islemler'] })
+    },
+  })
+}
+
+export function useApproveKayitSilme() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ kayitId }: { kayitId: string }) => {
+      const { data, error } = await supabase.rpc('approve_kayit_silme', {
+        p_kayit_id: kayitId,
+      })
+      if (error) throw error
+      const paths = (data ?? []) as string[]
+      if (paths.length > 0) {
+        // best-effort bucket cleanup — the DB rows are already gone and an
+        // orphaned storage object is harmless
+        try {
+          await supabase.storage.from('kayit-fotograflar').remove(paths)
+        } catch {
+          /* ignore */
+        }
+      }
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['kayit-silme-talepleri'] })
+      void queryClient.invalidateQueries({ queryKey: ['kayitlar'] })
+      void queryClient.invalidateQueries({ queryKey: ['kayit'] })
+      // a still-pending KAYIT geliri is deleted together with the kayıt
+      void queryClient.invalidateQueries({ queryKey: ['islemler'] })
+    },
+  })
+}
+
+export function useRejectKayitSilme() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ kayitId }: { kayitId: string }) => {
+      const { error } = await supabase.rpc('reject_kayit_silme', { p_kayit_id: kayitId })
+      if (error) throw error
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['kayit-silme-talepleri'] })
+      void queryClient.invalidateQueries({ queryKey: ['kayitlar'] })
+      void queryClient.invalidateQueries({ queryKey: ['kayit'] })
     },
   })
 }

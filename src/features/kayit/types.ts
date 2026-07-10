@@ -27,6 +27,9 @@ export interface Kayit {
   tarih: string // YYYY-MM-DD
   durum: KayitDurum
   notlar: string
+  /** Set = a silme isteği is waiting in the Onay queue (013). RPC-only. */
+  silme_talebi_by: string | null
+  silme_talebi_at: string | null
   created_at: string
   paket: Paket | null
   fotograflar: KayitFoto[]

@@ -155,6 +155,16 @@ export default function YeniKayit() {
             />
           </div>
 
+          <div>
+            <FieldLabel>RUHSAT NUMARASI</FieldLabel>
+            <input
+              type="text"
+              value={ruhsatNo}
+              onChange={(e) => setRuhsatNo(e.target.value)}
+              className={inputCls}
+            />
+          </div>
+
           <div className="flex gap-[10px]">
             <div className="flex-1">
               <FieldLabel>MARKA</FieldLabel>
@@ -197,16 +207,6 @@ export default function YeniKayit() {
                 className={inputCls}
               />
             </div>
-          </div>
-
-          <div>
-            <FieldLabel>RUHSAT NUMARASI</FieldLabel>
-            <input
-              type="text"
-              value={ruhsatNo}
-              onChange={(e) => setRuhsatNo(e.target.value)}
-              className={inputCls}
-            />
           </div>
 
           <div>

@@ -5,7 +5,7 @@
 -- Everything happens inside one transaction that is ROLLED BACK at the
 -- end — no test data survives, safe to run on the live project.
 --
--- Prerequisite: migrations 001–010 applied.
+-- Prerequisite: migrations 001–013 applied.
 --
 -- On success the messages end with:  ALL TESTS PASSED (rolled back)
 -- On the first failed check it stops with:  FAIL: <what broke>
@@ -21,6 +21,9 @@
 --   • Rejected kayıt geliri re-queues on re-complete (bug fix 008)
 --   • v_kasa_ozet matches hand-computed totals (checked as a delta,
 --     so it works regardless of existing data)
+--   • Kayıt silme goes through Onay (013): staff request, finance-only
+--     approve, flags RPC-only; deletion removes the pending gelir but
+--     decided gelirler survive detached (immutable kasa history)
 --
 -- NOT covered here (needs the deployed app / dashboard):
 --   • Storage policies, PWA, cron firing, UI walkthrough per role.
@@ -60,9 +63,11 @@ declare
 
   v_paket    uuid;
   v_kayit    uuid;
+  v_kayit2   uuid; -- second kayıt for the silme-with-pending-gelir case
   v_kayit_g  uuid; -- a GALERI kayıt the SERVIS staff must not see
   v_cari     uuid;
   v_hareket  uuid;
+  v_hareket2 uuid;
   v_gelir1   uuid;
   v_gelir2   uuid;
   v_islem_c1 uuid;
@@ -342,6 +347,18 @@ begin
   if v_durum <> 'YANSIDI' then raise exception 'FAIL: approve should set hareket YANSIDI, got %', v_durum; end if;
   raise notice 'PASS 11: cari yansıt -> reject -> re-yansıt -> approve round trip (+250.50)';
 
+  -- 012: only YOK hareketler are deletable
+  delete from cari_hareketler where id = v_hareket; -- YANSIDI -> policy filters it out
+  get diagnostics n = row_count;
+  if n <> 0 then raise exception 'FAIL: a YANSIDI hareket was deleted'; end if;
+  insert into cari_hareketler (cari_isletme_id, tur, tutar, note, created_by)
+  values (v_cari, 'GIDER', 10.00, 'Silinecek test hareket', u_muhasebe)
+  returning id into v_hareket2;
+  delete from cari_hareketler where id = v_hareket2;
+  get diagnostics n = row_count;
+  if n <> 1 then raise exception 'FAIL: a YOK hareket could not be deleted'; end if;
+  raise notice 'PASS 11b: hareket silme — YOK deletable, YANSIDI immutable (012)';
+
   -- ═══ 8) Decided rows are immutable ═══
   -- As table owner: RLS is bypassed, so what refuses the write here is
   -- the immutability trigger itself — the deepest layer of the invariant.
@@ -393,6 +410,59 @@ begin
     raise exception 'FAIL: v_kasa_ozet bakiye % != hand-computed %', gelir_after, gelir_before;
   end if;
   raise notice 'PASS 13: v_kasa_ozet equals hand-computed totals (bakiye %)', gelir_after;
+
+  -- ═══ 10) Kayıt silme Onay üzerinden (013) ═══
+
+  perform pg_temp.login(u_personel);
+  perform request_kayit_silme(v_kayit);
+  begin
+    perform approve_kayit_silme(v_kayit);
+    raise exception 'FAIL: personel could approve kayıt silme';
+  exception when others then
+    if sqlerrm like 'FAIL:%' then raise; end if; -- expected: yetkiniz yok
+  end;
+  begin
+    update kayitlar set silme_talebi_at = null, silme_talebi_by = null
+    where id = v_kayit;
+    raise exception 'FAIL: silme flag columns writable from client';
+  exception when others then
+    if sqlerrm like 'FAIL:%' then raise; end if; -- expected: column grant refuses
+  end;
+  perform pg_temp.logout();
+  select count(*) into n from kayitlar where id = v_kayit and silme_talebi_at is not null;
+  if n <> 1 then raise exception 'FAIL: request_kayit_silme did not flag the kayıt'; end if;
+  raise notice 'PASS 14: silme isteği — personel requests, cannot approve; flags RPC-only (013)';
+
+  perform pg_temp.login(u_muhasebe);
+  perform reject_kayit_silme(v_kayit);
+  perform pg_temp.logout();
+  select count(*) into n from kayitlar where id = v_kayit and silme_talebi_at is null;
+  if n <> 1 then raise exception 'FAIL: reject_kayit_silme did not clear the flag'; end if;
+
+  -- second kayıt born TAMAMLANDI: trigger queues a pending gelir that must
+  -- die together with the kayıt on approved deletion
+  insert into kayitlar (business_id, plaka, musteri_adi, paket_id, durum)
+  values (v_servis, '34 RLS 003', 'Silinecek Müşteri', v_paket, 'TAMAMLANDI')
+  returning id into v_kayit2;
+  select count(*) into n from islemler where kayit_id = v_kayit2 and durum = 'BEKLIYOR';
+  if n <> 1 then raise exception 'FAIL: fixture kayıt did not queue a pending gelir'; end if;
+
+  perform pg_temp.login(u_muhasebe);
+  perform request_kayit_silme(v_kayit2);
+  perform approve_kayit_silme(v_kayit2);
+  perform request_kayit_silme(v_kayit); -- has ONAYLANDI + REDDEDILDI gelir
+  perform approve_kayit_silme(v_kayit); -- FK detach must pass the guard fix
+  perform pg_temp.logout();
+
+  select count(*) into n from kayitlar where id in (v_kayit, v_kayit2);
+  if n <> 0 then raise exception 'FAIL: approved silme left kayıt rows (%)', n; end if;
+  select count(*) into n from islemler where kayit_id = v_kayit2;
+  if n <> 0 then raise exception 'FAIL: pending gelir survived kayıt deletion'; end if;
+  select count(*) into n from islemler where id in (v_gelir1, v_gelir2) and kayit_id is null;
+  if n <> 2 then
+    raise exception 'FAIL: decided gelirler should survive detached, got %', n;
+  end if;
+  raise notice 'PASS 15: kayıt silme — kayıt + pending gelir deleted, decided gelirler stay as kasa history (013)';
 
   raise notice '';
   raise notice '=== ALL TESTS PASSED (rolling back — no test data persists) ===';

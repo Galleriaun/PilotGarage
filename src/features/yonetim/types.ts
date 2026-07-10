@@ -18,7 +18,7 @@ export interface PersonelOdeme {
   id: string
   profile_id: string
   business_id: string
-  tur: 'MAAS' | 'AVANS'
+  tur: 'MAAS' | 'AVANS' | 'PRIM'
   tutar: number | string
   note: string
   tarih: string
@@ -33,6 +33,8 @@ export interface CariHareket {
   note: string
   tarih: string
   kasa_durumu: 'YOK' | 'BEKLIYOR' | 'YANSIDI'
+  /** set when the hareket was materialized from a tekrar rule (011) */
+  tekrar_kural_id: string | null
   created_at: string
 }
 

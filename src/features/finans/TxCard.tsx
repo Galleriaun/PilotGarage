@@ -1,6 +1,6 @@
-import { formatRelativeDate } from '../../lib/dates'
+import { formatCreatedStamp, formatRelativeDate } from '../../lib/dates'
 import { formatTL } from '../../lib/money'
-import type { Islem } from './types'
+import { ODEME_YONTEMI_CHIP, ODEME_YONTEMI_LABELS, type Islem } from './types'
 
 type IconKind = 'car' | 'wrench' | 'building' | 'users' | 'shield'
 
@@ -89,9 +89,40 @@ export default function TxCard({ islem, variant }: { islem: Islem; variant: 'whi
         <TxIcon kind={iconKind(islem)} />
       </div>
       <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-bold text-ink">{islem.baslik}</div>
-        <div className="mt-[1px] truncate text-xs text-muted">
-          {formatRelativeDate(islem.islem_tarihi)} · {islem.creator?.full_name ?? 'Otomatik'}
+        <div className="truncate text-sm font-bold text-ink">
+          {islem.kaynak === 'CARI_HESAP' && !islem.cari_hareket_id && (
+            <span className="font-semibold text-muted">Silinen işletme: </span>
+          )}
+          {islem.baslik}
+        </div>
+        <div className="mt-[2px] flex min-w-0 items-center gap-[6px] text-xs text-muted">
+          <span className="whitespace-nowrap">{formatRelativeDate(islem.islem_tarihi)}</span>
+          {islem.kategori && (
+            <span className="truncate rounded-[6px] bg-[#EBEBEB] px-[7px] py-[2px] text-[10.5px] font-semibold text-[#555]">
+              {islem.kategori.label}
+            </span>
+          )}
+          {islem.odeme_yontemi && (
+            <span
+              className="shrink-0 rounded-[6px] px-[7px] py-[2px] text-[10.5px] font-semibold"
+              style={{
+                background: ODEME_YONTEMI_CHIP[islem.odeme_yontemi].bg,
+                color: ODEME_YONTEMI_CHIP[islem.odeme_yontemi].color,
+              }}
+            >
+              {ODEME_YONTEMI_LABELS[islem.odeme_yontemi]}
+            </span>
+          )}
+        </div>
+        <div className="mt-[4px] flex min-w-0 items-center gap-[10px] text-[11px] text-faint">
+          <span className="flex min-w-0 items-center gap-[5px]">
+            <span className="h-[4px] w-[4px] shrink-0 rounded-full bg-[#C4C4C4]" />
+            <span className="truncate">{islem.creator?.full_name ?? 'Otomatik'}</span>
+          </span>
+          <span className="flex shrink-0 items-center gap-[5px]">
+            <span className="h-[4px] w-[4px] shrink-0 rounded-full bg-[#C4C4C4]" />
+            {formatCreatedStamp(islem.created_at)}
+          </span>
         </div>
       </div>
       <div

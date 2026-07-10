@@ -213,6 +213,23 @@ export function useAddPhotos() {
   })
 }
 
+/** Files a silme isteği — the kayıt is deleted only after finance approves
+ *  it in the Onay queue (approve_kayit_silme RPC). */
+export function useRequestKayitSilme() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id }: { id: string }) => {
+      const { error } = await supabase.rpc('request_kayit_silme', { p_kayit_id: id })
+      if (error) throw error
+    },
+    onSuccess: (_data, { id }) => {
+      void queryClient.invalidateQueries({ queryKey: ['kayitlar'] })
+      void queryClient.invalidateQueries({ queryKey: ['kayit', id] })
+      void queryClient.invalidateQueries({ queryKey: ['kayit-silme-talepleri'] })
+    },
+  })
+}
+
 export function useDeletePhoto() {
   const queryClient = useQueryClient()
   return useMutation({
