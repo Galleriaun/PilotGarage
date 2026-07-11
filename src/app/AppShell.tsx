@@ -1,6 +1,8 @@
 import { Outlet, useLocation, useNavigate } from 'react-router'
 import AccountMenu from '../components/ui/AccountMenu'
 import { useAuth } from './providers/AuthProvider'
+import { useBusiness } from './providers/BusinessProvider'
+import { useBildirimler } from '../features/settings/api'
 
 function DocIcon({ color }: { color: string }) {
   return (
@@ -88,6 +90,62 @@ function UserIcon({ color }: { color: string }) {
     >
       <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
       <circle cx="12" cy="7" r="4" />
+    </svg>
+  )
+}
+
+function SwapNavIcon({ color }: { color: string }) {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={color}
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <polyline points="17 1 21 5 17 9" />
+      <path d="M3 11V9a4 4 0 014-4h14" />
+      <polyline points="7 23 3 19 7 15" />
+      <path d="M21 13v2a4 4 0 01-4 4H3" />
+    </svg>
+  )
+}
+
+function TrashNavIcon({ color }: { color: string }) {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={color}
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <polyline points="3 6 5 6 21 6" />
+      <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+    </svg>
+  )
+}
+
+function GearNavIcon({ color }: { color: string }) {
+  return (
+    <svg
+      width="22"
+      height="22"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={color}
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z" />
     </svg>
   )
 }
@@ -232,45 +290,81 @@ function PersonelNav() {
   )
 }
 
-/** Desktop-only left sidebar; replaces the bottom nav on md+ screens. */
-function Sidebar({ isPersonel }: { isPersonel: boolean }) {
+/** Desktop-only dark top bar; replaces the bottom nav on md+ screens. */
+function TopBar({ isPersonel }: { isPersonel: boolean }) {
   const navigate = useNavigate()
   const { pathname } = useLocation()
+  const { activeBusiness, businesses } = useBusiness()
+  const { data: bildirimler = [] } = useBildirimler()
+  const unread = bildirimler.filter((b) => !b.read_at).length
   const items = isPersonel
     ? [
         { to: '/personel', label: 'Ana Sayfa', icon: HomeIcon, active: pathname.startsWith('/personel') },
-        { to: '/kayit/yeni', label: 'Yeni Kayıt', icon: DocIcon, active: pathname === '/kayit/yeni' },
-        { to: '/bildirimler', label: 'Bildirimler', icon: BellIcon, active: pathname.startsWith('/bildirimler') },
-        { to: '/ayarlar', label: 'Ayarlar', icon: UserIcon, active: pathname.startsWith('/ayarlar') },
       ]
     : [
         { to: '/yonetici', label: 'Kayıt', icon: DocIcon, active: pathname.startsWith('/yonetici') || pathname.startsWith('/kayit/') },
-        { to: '/kayit/yeni', label: 'Yeni Kayıt', icon: HomeIcon, active: pathname === '/kayit/yeni' },
         { to: '/yonetim', label: 'Finans', icon: GridIcon, active: pathname.startsWith('/yonetim') },
-        { to: '/bildirimler', label: 'Bildirimler', icon: BellIcon, active: pathname.startsWith('/bildirimler') },
-        { to: '/ayarlar', label: 'Ayarlar', icon: UserIcon, active: pathname.startsWith('/ayarlar') },
       ]
+  const iconLinks = [
+    ...(isPersonel
+      ? []
+      : [{ to: '/yonetim/cop', label: 'Çöp Kutusu', icon: TrashNavIcon, active: pathname.startsWith('/yonetim/cop') }]),
+    { to: '/bildirimler', label: 'Bildirimler', icon: BellIcon, active: pathname.startsWith('/bildirimler') },
+    { to: '/ayarlar', label: 'Ayarlar', icon: GearNavIcon, active: pathname.startsWith('/ayarlar') },
+  ]
   return (
-    <aside className="hidden w-[240px] shrink-0 flex-col gap-1 border-r border-[#E8E8E8] bg-white px-4 py-6 md:flex">
-      <div className="mb-6 px-3 text-[19px] font-bold tracking-[-0.3px] text-ink">
-        PilotGarage
+    <header className="hidden h-14 shrink-0 items-center bg-[#151515] px-6 md:flex">
+      <div className="flex w-[220px] items-center gap-2">
+        <span className="truncate text-[17px] font-bold tracking-[-0.3px] text-white">
+          {activeBusiness?.name ?? 'PilotGarage'}
+        </span>
+        {businesses.length > 1 && (
+          <button
+            type="button"
+            aria-label="İşletme değiştir"
+            onClick={() => void navigate('/isletme-sec')}
+            className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-[9px] bg-white/10"
+          >
+            <SwapNavIcon color="#B5B5B5" />
+          </button>
+        )}
       </div>
-      {items.map((it) => (
-        <button
-          key={it.to}
-          type="button"
-          onClick={() => void navigate(it.to)}
-          className="flex cursor-pointer items-center gap-3 rounded-[12px] px-4 py-3 text-left text-sm font-semibold"
-          style={{
-            background: it.active ? '#F2F2F2' : 'transparent',
-            color: it.active ? ACTIVE : INACTIVE,
-          }}
-        >
-          <it.icon color={it.active ? ACTIVE : INACTIVE} />
-          {it.label}
-        </button>
-      ))}
-    </aside>
+      <nav className="flex flex-1 items-center justify-center gap-2">
+        {items.map((it) => (
+          <button
+            key={it.to}
+            type="button"
+            onClick={() => void navigate(it.to)}
+            className="cursor-pointer rounded-[8px] px-4 py-[7px] text-sm font-semibold"
+            style={{
+              background: it.active ? '#fff' : 'transparent',
+              color: it.active ? '#111' : '#B5B5B5',
+            }}
+          >
+            {it.label}
+          </button>
+        ))}
+      </nav>
+      <div className="flex w-[220px] items-center justify-end gap-1">
+        {iconLinks.map((it) => (
+          <button
+            key={it.to}
+            type="button"
+            aria-label={it.label}
+            onClick={() => void navigate(it.to)}
+            className="relative flex h-9 w-9 cursor-pointer items-center justify-center rounded-full"
+            style={{ background: it.active ? '#fff' : 'transparent' }}
+          >
+            <it.icon color={it.active ? '#111' : '#B5B5B5'} />
+            {it.to === '/bildirimler' && unread > 0 && (
+              <span className="absolute right-0 top-0 flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[9.5px] font-bold text-white">
+                {unread > 9 ? '9+' : unread}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+    </header>
   )
 }
 
@@ -278,17 +372,17 @@ export default function AppShell() {
   const { profile } = useAuth()
   const isPersonel = profile?.role === 'PERSONEL'
   return (
-    // Desktop: sidebar navigation + a wider centered content column;
-    // mobile keeps the edge-to-edge layout with the bottom nav.
-    <div className="flex h-dvh md:bg-[#F3F3F3]">
-      <Sidebar isPersonel={isPersonel} />
-      <div className="mx-auto flex h-full w-full max-w-[480px] flex-col overflow-hidden bg-white md:max-w-[680px] md:border-x md:border-[#E8E8E8]">
-        <main className="flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain">
+    // Desktop: dark top navigation bar + full-width content below.
+    // Mobile keeps the centered phone column + bottom nav.
+    <div className="flex h-dvh flex-col bg-white">
+      <TopBar isPersonel={isPersonel} />
+      <main className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain">
+        <div className="mx-auto w-full max-w-[480px] md:max-w-none md:px-10 md:pb-10 md:pt-2 xl:px-14">
           <Outlet />
-        </main>
-        <div className="shrink-0 md:hidden">
-          {isPersonel ? <PersonelNav /> : <YoneticiNav />}
         </div>
+      </main>
+      <div className="shrink-0 md:hidden">
+        {isPersonel ? <PersonelNav /> : <YoneticiNav />}
       </div>
     </div>
   )

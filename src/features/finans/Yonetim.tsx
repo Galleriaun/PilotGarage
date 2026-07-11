@@ -144,7 +144,7 @@ export default function Yonetim() {
   return (
     <div className="screen-forward">
       {/* Header */}
-      <div className="flex items-center gap-[10px] px-6 pb-[14px] pt-5">
+      <div className="flex items-center gap-[10px] px-6 pb-[14px] pt-5 md:hidden">
         <span className="text-[19px] font-bold text-ink">{activeBusiness?.name ?? ''}</span>
         {businesses.length > 1 && (
           <button
@@ -184,8 +184,9 @@ export default function Yonetim() {
         </p>
       ) : (
         <>
-          {/* Toplam bakiye */}
-          <div className="mx-6 mt-[18px] rounded-[24px] bg-[linear-gradient(150deg,#1C1C1E,#0A0A0A)] px-[22px] py-6 shadow-[0_12px_28px_rgba(0,0,0,0.18)]">
+          {/* Toplam bakiye + Gelir/Gider — desktop: side by side */}
+          <div className="md:grid md:grid-cols-3 md:items-stretch md:gap-4 md:px-6 md:pt-[18px]">
+          <div className="mx-6 mt-[18px] rounded-[24px] bg-[linear-gradient(150deg,#1C1C1E,#0A0A0A)] px-[22px] py-6 shadow-[0_12px_28px_rgba(0,0,0,0.18)] md:mx-0 md:mt-0">
             <div className="flex items-center justify-between gap-2">
               <div className="shrink-0 text-xs font-semibold tracking-[0.4px] text-white/50">
                 TOPLAM BAKİYE
@@ -242,7 +243,8 @@ export default function Yonetim() {
           </div>
 
           {/* Gelir / Gider */}
-          <div className="flex gap-[10px] px-6 pt-[14px]">
+          {/* md:contents → Gelir and Gider become their own grid cells */}
+          <div className="flex gap-[10px] px-6 pt-[14px] md:contents">
             {(
               [
                 { tur: 'GELIR', label: 'Gelir', amount: gelir, iconBg: '#F0FDF4' },
@@ -253,7 +255,7 @@ export default function Yonetim() {
               return (
                 <div
                   key={card.tur}
-                  className="flex-1 rounded-[18px] bg-white px-4 py-[15px] shadow-[0_1px_2px_rgba(0,0,0,0.03),0_4px_10px_rgba(0,0,0,0.04)]"
+                  className="flex-1 rounded-[18px] bg-white px-4 py-[15px] shadow-[0_1px_2px_rgba(0,0,0,0.03),0_4px_10px_rgba(0,0,0,0.04)] md:flex md:flex-col md:justify-center md:gap-2 md:border md:border-[#EFEFEF] md:px-6"
                 >
                   <button
                     type="button"
@@ -295,6 +297,7 @@ export default function Yonetim() {
                 </div>
               )
             })}
+          </div>
           </div>
 
           {/* Dönem filtreleri */}
@@ -341,16 +344,18 @@ export default function Yonetim() {
 
           {/* Raporlar carousel */}
           <div className="pt-[22px]">
-            <div className="mb-[14px] px-6 text-[13px] font-bold text-ink">Raporlar</div>
+            <div className="mb-[14px] px-6 text-[15px] font-bold tracking-[-0.3px] text-ink">
+              Raporlar
+            </div>
             <div
-              className="flex snap-x snap-mandatory items-start overflow-x-auto overflow-y-hidden"
+              className="flex snap-x snap-mandatory items-start overflow-x-auto overflow-y-hidden md:grid md:grid-cols-3 md:gap-4 md:overflow-visible md:px-6"
               onScroll={(e) => {
                 const el = e.currentTarget
                 const idx = Math.round(el.scrollLeft / el.clientWidth)
                 if (idx !== widgetIndex) setWidgetIndex(idx)
               }}
             >
-              <div className="w-full shrink-0 snap-start px-6">
+              <div className="w-full shrink-0 snap-start px-6 md:px-0">
                 <CashFlowCard
                   months={cashFlowMonths}
                   year={currentYear}
@@ -362,14 +367,14 @@ export default function Yonetim() {
                   }}
                 />
               </div>
-              <div className="w-full shrink-0 snap-start px-6">
+              <div className="w-full shrink-0 snap-start px-6 md:px-0">
                 <SpendingCard
                   islemler={islemler}
                   year={currentYear}
                   selectedMonth={selectedMonth}
                 />
               </div>
-              <div className="w-full shrink-0 snap-start px-6">
+              <div className="w-full shrink-0 snap-start px-6 md:px-0">
                 <RecurringCard
                   sabitGiderler={sabitGiderler}
                   tekrarKurallari={tekrarKurallari}
@@ -377,7 +382,7 @@ export default function Yonetim() {
                 />
               </div>
             </div>
-            <div className="mt-3 flex justify-center gap-[6px]">
+            <div className="mt-3 flex justify-center gap-[6px] md:hidden">
               {[0, 1, 2].map((i) => (
                 <div
                   key={i}
@@ -396,7 +401,7 @@ export default function Yonetim() {
           entrance animation transforms the wrapper, which would hijack
           position:fixed and pin the button to the scroll content. */}
       {createPortal(
-        <div className="pointer-events-none fixed inset-x-0 bottom-[calc(72px+env(safe-area-inset-bottom))] z-40 mx-auto flex w-full max-w-[480px] justify-center md:left-[240px] md:bottom-8">
+        <div className="pointer-events-none fixed inset-x-0 bottom-[calc(72px+env(safe-area-inset-bottom))] z-40 mx-auto flex w-full max-w-[480px] justify-center md:bottom-8">
           <button
             type="button"
             onClick={() => void navigate('/yonetim/onay')}

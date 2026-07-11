@@ -19,7 +19,7 @@ export default function FloatingSavePopup({
   busy: boolean
 }) {
   return createPortal(
-    <div className="pointer-events-none fixed inset-x-0 bottom-[104px] z-40 mx-auto w-full max-w-[480px] px-[14px] md:left-[240px] md:bottom-10">
+    <div className="pointer-events-none fixed inset-x-0 bottom-[104px] z-40 mx-auto w-full max-w-[480px] px-[14px] md:bottom-10 md:max-w-[600px]">
       <div className="rise-in pointer-events-auto flex items-center gap-[10px] rounded-[18px] bg-white py-3 pl-4 pr-3 shadow-[0_14px_38px_rgba(0,0,0,0.2)]">
         <div className="min-w-0 flex-1">
           <div className="text-sm font-bold text-ink">Kaydedilmemiş değişiklik</div>

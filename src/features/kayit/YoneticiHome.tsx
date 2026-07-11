@@ -111,8 +111,8 @@ export default function YoneticiHome() {
 
   return (
     <div className="screen-forward">
-      {/* Header */}
-      <div className="flex items-center gap-[10px] px-6 pt-[14px]">
+      {/* Header — desktop has the top bar instead */}
+      <div className="flex items-center gap-[10px] px-6 pt-[14px] md:hidden">
         <span className="text-[19px] font-bold text-ink">{activeBusiness?.name ?? ''}</span>
         {businesses.length > 1 && (
           <button
@@ -138,12 +138,13 @@ export default function YoneticiHome() {
       </div>
 
       {/* Stats */}
-      <div className="flex gap-[10px] px-6 pt-[14px]">
-        <div className="flex-1 rounded-[16px] bg-card px-[14px] py-[18px]">
+      <div className="flex gap-[10px] px-6 pt-[14px] md:grid md:grid-cols-3">
+        <div className="flex-1 rounded-[16px] bg-card px-[14px] py-[18px] md:flex md:items-center md:gap-[10px] md:py-2">
           <div className="text-[26px] font-bold tracking-[-0.5px] text-ink">{kayitlar.length}</div>
-          <div className="mt-1 text-[13px] text-muted">Toplam Kayıt</div>
+          <div className="mt-1 text-[13px] text-muted md:mt-0">Toplam Kayıt</div>
         </div>
-        <div className="flex flex-1 flex-col gap-[10px]">
+        {/* md:contents lifts the two pills into the grid as equal cells */}
+        <div className="flex flex-1 flex-col gap-[10px] md:contents">
           <div className="flex flex-1 items-center gap-[10px] rounded-[10px] bg-danger px-[14px] py-2">
             <div className="text-[26px] font-bold tracking-[-0.5px] text-white">{aktifCount}</div>
             <div className="text-[13px] text-white/65">Aktif Kayıt</div>
