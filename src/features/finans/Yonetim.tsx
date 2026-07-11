@@ -127,12 +127,13 @@ export default function Yonetim() {
 
   // Nakit / Kredi Kartı split of the same period (net; yöntemsiz işlemler
   // — cari, maaş/avans — are outside both buckets by design)
-  function yontemNet(y: 'NAKIT' | 'KREDI_KARTI') {
+  function yontemNet(y: 'NAKIT' | 'KREDI_KARTI' | 'HAVALE') {
     const rows = islemler.filter((i) => i.odeme_yontemi === y)
     return sumKurus(rows, 'GELIR', range) - sumKurus(rows, 'GIDER', range)
   }
   const nakitNet = yontemNet('NAKIT')
   const kkNet = yontemNet('KREDI_KARTI')
+  const havaleNet = yontemNet('HAVALE')
 
   const bakiyeLabel = formatTL(bakiye)
   const deltaLabel = delta !== null ? `${delta >= 0 ? '+' : '-'}${formatTL(Math.abs(delta))}` : ''
@@ -238,6 +239,13 @@ export default function Yonetim() {
                   Kredi Kartı
                 </span>
                 <span className="truncate text-xs font-bold text-white">{formatTL(kkNet)}</span>
+              </div>
+              <div className="flex min-w-0 items-center gap-[6px]">
+                <span className="h-[6px] w-[6px] shrink-0 rounded-full bg-[#C4B5FD]" />
+                <span className="text-[11px] font-semibold text-white/50">Havale</span>
+                <span className="truncate text-xs font-bold text-white">
+                  {formatTL(havaleNet)}
+                </span>
               </div>
             </div>
           </div>

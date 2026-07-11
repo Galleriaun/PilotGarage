@@ -7,6 +7,7 @@ import { useTrashItems } from './api'
 
 const TYPE_LABELS: Record<string, string> = {
   KAYIT: 'Kayıt',
+  ISLEM: 'İşlem',
   ISLETME: 'İşletme',
   HAREKET: 'Hareket',
   SABIT_GIDER: 'Sabit Gider',

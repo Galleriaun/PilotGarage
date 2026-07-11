@@ -30,9 +30,9 @@ Vite 8.1 · React 19.2 · TypeScript 6.0 · Tailwind CSS 4.3 · React Router 8.1
 
 ---
 
-## Database — 21 migrations
+## Database — 24 migrations
 
-Run in order in the Supabase SQL editor. **1–7 applied as of 2026-07-08; 8–21 are new (Sprint 4) — run them.**
+Run in order in the Supabase SQL editor. **1–7 applied as of 2026-07-08; 8–24 are new (Sprint 4) — run them.**
 
 1. `001_schema.sql` — enums, tables, `v_kasa_ozet` view (balance is a **view over ONAYLANDI rows**, never stored)
 2. `002_functions.sql` — RLS helpers, triggers, all RPCs (Onay gate, roles, cron body)
@@ -55,6 +55,9 @@ Run in order in the Supabase SQL editor. **1–7 applied as of 2026-07-08; 8–2
 19. `019_tekrar_otomatik.sql` — tekrar kuralları skip Onay like sabit giderler: cron materializes their monthly kasa işlemi born `ONAYLANDI` (approved once at setup); cari-targeted rules still born `YOK`.
 20. `020_kayit_saat.sql` — `kayitlar.baslangic_saati/bitis_saati` (optional 30-min slots, 09:00–21:00, DB check bitiş > başlangıç, column grants) + `run_saat_transitions()` on a **second cron** (`pilotgarage-saat`, every 15 min): BEKLENEN → AKTIF at start, BEKLENEN/AKTIF → TAMAMLANDI after end (fires the normal gelir trigger; never moves durum backwards).
 21. `021_push.sql` — `push_subscriptions` (own-rows RLS). Web Push pipeline: notifications INSERT → database webhook → `send-push` Edge Function (`supabase/functions/send-push/`, npm:web-push, VAPID, prunes dead endpoints, respects notif_prefs) → device. Client: `src/lib/push.ts` + Ayarlar "Anlık bildirimler" toggle; SW handlers in `public/push-sw.js` via workbox `importScripts`. Setup steps in SETUP.md §8 (VAPID keys, `VITE_VAPID_PUBLIC_KEY` GitHub secret, function secrets, webhook).
+22. `022_bildirim_yeni_kayit.sql` — `KAYIT` notification type: new kayıt → finance staff minus creator, link `/kayit/:id`; "Yeni kayıtlar" toggle in Ayarlar; push function pref map updated (redeploy `send-push` if already deployed).
+23. `023_havale.sql` — `HAVALE` added to the `odeme_yontemi` enum (+ approve-gate wording). Client: purple Havale chip, third selector option in Gelir/Gider Ekle + Onay, Havale bucket in all three Nakit/KK split bars.
+24. `024_islem_silme.sql` — **işlem deletion (owner decision — softens the immutability invariant)**: `delete_islem` RPC (finance) flags exactly one row via a transaction-local setting that the immutability guard honors on DELETE; no other delete path for decided rows exists. Cari işlem delete resets its hareket to `YOK`; row snapshotted to trash. UI: trash icon on Tüm İşlemler cards + ConfirmDialog.
 
 **Required Supabase extensions:** `pgcrypto`, `pg_cron`.
 

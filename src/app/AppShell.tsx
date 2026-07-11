@@ -42,24 +42,6 @@ function GridIcon({ color }: { color: string }) {
   )
 }
 
-function HomeIcon({ color }: { color: string }) {
-  return (
-    <svg
-      width="22"
-      height="22"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke={color}
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
-      <polyline points="9 22 9 12 15 12 15 22" />
-    </svg>
-  )
-}
-
 function BellIcon({ color }: { color: string }) {
   return (
     <svg
@@ -236,21 +218,11 @@ function PersonelNav() {
           onClick={() => void navigate('/personel')}
           className="flex min-w-[52px] cursor-pointer flex-col items-center gap-[3px]"
         >
-          <HomeIcon color={onHome ? ACTIVE : INACTIVE} />
+          <DocIcon color={onHome ? ACTIVE : INACTIVE} />
           <span
             className="text-[10px] font-semibold"
             style={{ color: onHome ? ACTIVE : INACTIVE }}
           >
-            Ana Sayfa
-          </span>
-        </button>
-        <button
-          type="button"
-          aria-label="Kayıtlar (yakında)"
-          className="flex min-w-[52px] cursor-pointer flex-col items-center gap-[3px]"
-        >
-          <DocIcon color={INACTIVE} />
-          <span className="text-[10px] font-semibold" style={{ color: INACTIVE }}>
             Kayıtlar
           </span>
         </button>
@@ -299,7 +271,7 @@ function TopBar({ isPersonel }: { isPersonel: boolean }) {
   const unread = bildirimler.filter((b) => !b.read_at).length
   const items = isPersonel
     ? [
-        { to: '/personel', label: 'Ana Sayfa', icon: HomeIcon, active: pathname.startsWith('/personel') },
+        { to: '/personel', label: 'Kayıtlar', icon: DocIcon, active: pathname.startsWith('/personel') },
       ]
     : [
         { to: '/yonetici', label: 'Kayıt', icon: DocIcon, active: pathname.startsWith('/yonetici') || pathname.startsWith('/kayit/') },

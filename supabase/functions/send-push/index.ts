@@ -26,6 +26,7 @@ const PREF_OF_TYPE: Record<string, string> = {
   ONAY: 'onay',
   KAYIT_SILME: 'silme',
   UYELIK: 'uyelik',
+  KAYIT: 'kayit',
 }
 
 Deno.serve(async (req) => {

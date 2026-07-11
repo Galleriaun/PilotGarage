@@ -33,6 +33,9 @@ Follow strictly in order: 1–2 backend, 3 deploy, 4 auth, 5 first Yönetici, 6 
 19. `019_tekrar_otomatik.sql` — tekrar kuralları also skip Onay: the cron creates their monthly işlem born `ONAYLANDI` (cari-targeted rules unchanged)
 20. `020_kayit_saat.sql` — kayıt başlangıç/bitiş saati (30-min slots 09:00–21:00) + `pilotgarage-saat` cron (every 15 min) that auto-advances durum: start → AKTIF, end → TAMAMLANDI
 21. `021_push.sql` — Web Push subscription rows (one per device; own-rows RLS). Requires the **section 8** setup to actually deliver pushes.
+22. `022_bildirim_yeni_kayit.sql` — new kayıt notifies finance staff (minus the creator); tap opens the kayıt
+23. `023_havale.sql` — third ödeme yöntemi: Havale (enum value + approve gate wording)
+24. `024_islem_silme.sql` — finance can delete an işlem via `delete_islem` RPC (kasa recalculates; cari hareket released to YOK; row lands in the trash)
 
 **After all migrations (recommended):** run `supabase/tests/rls_smoke_test.sql` —
 paste the whole file into the SQL editor and run once. It verifies RLS isolation

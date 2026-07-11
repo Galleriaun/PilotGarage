@@ -2,12 +2,14 @@ import { useMemo, useState, type ReactNode } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 import { useNavigate, useSearchParams } from 'react-router'
 import { useBusiness } from '../../app/providers/BusinessProvider'
+import ConfirmDialog from '../../components/ui/ConfirmDialog'
 import { formatTL } from '../../lib/money'
 import { BackChevron } from '../auth/EyeIcon'
 import { CalendarIcon, CheckSmallIcon, ChevronDownIcon, SearchIcon } from '../kayit/icons'
 import TxCard from './TxCard'
-import { useApprovedIslemler, useKategoriler } from './api'
+import { useApprovedIslemler, useDeleteIslem, useKategoriler } from './api'
 import { inRange, periodRange, type DateRange } from './selectors'
+import type { Islem } from './types'
 
 type TurFilter = 'TUMU' | 'GELIR' | 'GIDER'
 type CalendarFilter =
@@ -119,6 +121,17 @@ export default function TumIslemler() {
     start: '',
     end: '',
   })
+  const [deleting, setDeleting] = useState<Islem | null>(null)
+  const deleteIslem = useDeleteIslem()
+
+  async function onConfirmDelete() {
+    if (!deleting) return
+    try {
+      await deleteIslem.mutateAsync({ islemId: deleting.id })
+    } finally {
+      setDeleting(null)
+    }
+  }
 
   const filtered = useMemo(() => {
     const range = calendarRange(calendar)
@@ -136,12 +149,14 @@ export default function TumIslemler() {
   let gider = 0
   let nakitNet = 0
   let kkNet = 0
+  let havaleNet = 0
   for (const i of filtered) {
     if (i.tur === 'GELIR') gelir += i.kurus
     else gider += i.kurus
     const signed = i.tur === 'GELIR' ? i.kurus : -i.kurus
     if (i.odeme_yontemi === 'NAKIT') nakitNet += signed
     else if (i.odeme_yontemi === 'KREDI_KARTI') kkNet += signed
+    else if (i.odeme_yontemi === 'HAVALE') havaleNet += signed
   }
 
   const kategoriLabel =
@@ -300,6 +315,10 @@ export default function TumIslemler() {
               <span className="text-xs font-semibold text-white/55">Kredi Kartı:</span>
               <span className="text-[13px] font-bold text-[#60A5FA]">{formatTL(kkNet)}</span>
             </div>
+            <div className="flex items-baseline gap-1">
+              <span className="text-xs font-semibold text-white/55">Havale:</span>
+              <span className="text-[13px] font-bold text-[#C4B5FD]">{formatTL(havaleNet)}</span>
+            </div>
           </div>
         </div>
 
@@ -321,12 +340,23 @@ export default function TumIslemler() {
         ) : (
           <div className="flex flex-col gap-[10px]">
             {filtered.map((i) => (
-              <TxCard key={i.id} islem={i} variant="gray" />
+              <TxCard key={i.id} islem={i} variant="gray" onDelete={() => setDeleting(i)} />
             ))}
           </div>
         )}
       </div>
       <div className="h-10" />
+
+      <ConfirmDialog
+        open={deleting !== null}
+        title="İşlemi sil"
+        message="Bu işlemi silmek istiyor musunuz?"
+        confirmLabel="Sil"
+        danger
+        busy={deleteIslem.isPending}
+        onConfirm={() => void onConfirmDelete()}
+        onCancel={() => setDeleting(null)}
+      />
 
       {/* Tarih aralığı modal */}
       <Dialog.Root

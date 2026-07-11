@@ -293,6 +293,22 @@ export function useRejectKayitSilme() {
   })
 }
 
+/** Finance-only hard delete (RPC — the kasa view recalculates itself). */
+export function useDeleteIslem() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ islemId }: { islemId: string }) => {
+      const { error } = await supabase.rpc('delete_islem', { p_id: islemId })
+      if (error) throw error
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['islemler'] })
+      // a deleted CARI_HESAP işlem resets its hareket to YOK
+      void queryClient.invalidateQueries({ queryKey: ['cari'] })
+    },
+  })
+}
+
 export function useRejectIslem() {
   const queryClient = useQueryClient()
   return useMutation({

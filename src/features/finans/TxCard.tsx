@@ -75,8 +75,26 @@ export function amountLabel(islem: Islem): string {
   return `${islem.tur === 'GELIR' ? '+' : '-'}${formatTL(islem.kurus)}`
 }
 
-/** Transaction row — white variant on Yönetim, gray on Tüm İşlemler. */
-export default function TxCard({ islem, variant }: { islem: Islem; variant: 'white' | 'gray' }) {
+function TrashSmallIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#C62828" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="3 6 5 6 21 6" />
+      <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+    </svg>
+  )
+}
+
+/** Transaction row — white variant on Yönetim, gray on Tüm İşlemler.
+ *  `onDelete` adds a trash button (finance screens). */
+export default function TxCard({
+  islem,
+  variant,
+  onDelete,
+}: {
+  islem: Islem
+  variant: 'white' | 'gray'
+  onDelete?: () => void
+}) {
   return (
     <div
       className={
@@ -131,6 +149,16 @@ export default function TxCard({ islem, variant }: { islem: Islem; variant: 'whi
       >
         {amountLabel(islem)}
       </div>
+      {onDelete && (
+        <button
+          type="button"
+          onClick={onDelete}
+          aria-label="İşlemi sil"
+          className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-[9px] bg-danger-soft"
+        >
+          <TrashSmallIcon />
+        </button>
+      )}
     </div>
   )
 }

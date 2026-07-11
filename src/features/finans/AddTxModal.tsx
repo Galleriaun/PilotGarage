@@ -182,7 +182,7 @@ export default function AddTxModal({ open, tur, businessId, onClose }: AddTxModa
               <div>
                 <div className={fieldLabelCls}>ÖDEME YÖNTEMİ</div>
                 <div className="flex gap-2">
-                  {(['NAKIT', 'KREDI_KARTI'] as const).map((y) => {
+                  {(['NAKIT', 'KREDI_KARTI', 'HAVALE'] as const).map((y) => {
                     const selected = odemeYontemi === y
                     return (
                       <button

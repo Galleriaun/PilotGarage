@@ -65,16 +65,15 @@ export interface KayitSilmeTalebi {
   talep_eden: { full_name: string } | null
 }
 
-export const ODEME_YONTEMI_LABELS: Record<'NAKIT' | 'KREDI_KARTI', string> = {
+export const ODEME_YONTEMI_LABELS: Record<OdemeYontemi, string> = {
   NAKIT: 'Nakit',
   KREDI_KARTI: 'Kredi Kartı',
+  HAVALE: 'Havale',
 }
 
-/** Chip colors: Nakit green, Kredi Kartı blue (owner request 2026-07-10). */
-export const ODEME_YONTEMI_CHIP: Record<
-  'NAKIT' | 'KREDI_KARTI',
-  { bg: string; color: string }
-> = {
+/** Chip colors: Nakit green, Kredi Kartı blue, Havale purple. */
+export const ODEME_YONTEMI_CHIP: Record<OdemeYontemi, { bg: string; color: string }> = {
   NAKIT: { bg: '#F0FDF4', color: '#15803D' },
   KREDI_KARTI: { bg: '#EEF4FF', color: '#2A5BD7' },
+  HAVALE: { bg: '#F5F0FF', color: '#7C3AED' },
 }

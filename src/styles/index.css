@@ -58,6 +58,66 @@
   }
 }
 
+/* ── Dark mode — html.dark, toggled in Ayarlar ────────────────
+   Token overrides do most of the work; the extra rules catch the
+   hardcoded light hexes (arbitrary classes + inline chip styles). */
+.dark {
+  --color-ink: #ececec;
+  --color-soft: #b0b0b6;
+  --color-muted: #9a9aa1;
+  --color-faint: #6f6f76;
+  --color-label: #8d8d94;
+  --color-card: #202023;
+  --color-field: #26262b;
+  --color-inputfill: #1d1d21;
+  --color-inputline: #34343b;
+  --color-divider: #2c2c31;
+  --color-success-soft: #142a1b;
+  --color-danger-soft: #331b1b;
+  --color-avatar: #2e2e34;
+  color-scheme: dark;
+}
+.dark body {
+  background-color: #141416;
+}
+.dark .bg-white {
+  background-color: #202023;
+}
+/* arbitrary light hexes: chips, borders, subdued text */
+.dark [class*='bg-[#E'],
+.dark [class*='bg-[#F'] {
+  background-color: #26262b;
+}
+.dark [class*='border-[#E'] {
+  border-color: #2c2c31;
+}
+.dark [class*='text-[#5'],
+.dark [class*='text-[#6'] {
+  color: #a6a6ad;
+}
+/* primary black buttons flip to light pills */
+.dark .bg-ink {
+  background-color: #ececec;
+  color: #111;
+}
+.dark .bg-ink svg {
+  stroke: #111;
+}
+/* inline-styled chips: selected #111 / unselected #F2F2F2 / #fff / #FAFAFA */
+.dark [style*='background: rgb(17, 17, 17)'] {
+  background-color: #ececec !important;
+  color: #111 !important;
+}
+.dark [style*='background: rgb(242, 242, 242)'] {
+  background-color: #26262b !important;
+}
+.dark [style*='background: rgb(255, 255, 255)'] {
+  background-color: #202023 !important;
+}
+.dark [style*='background: rgb(250, 250, 250)'] {
+  background-color: #26262b !important;
+}
+
 /* iOS push/pop screen transitions (design README, Motion) */
 @keyframes screen-in-right {
   from {

@@ -93,7 +93,7 @@ function OnayCard({
 
       {/* Ödeme yöntemi — required for KAYIT-sourced entries, per owner decision */}
       <div className="mt-3 flex gap-2">
-        {(['NAKIT', 'KREDI_KARTI'] as const).map((y) => {
+        {(['NAKIT', 'KREDI_KARTI', 'HAVALE'] as const).map((y) => {
           const selected = yontem === y
           return (
             <button
@@ -360,12 +360,14 @@ export default function Onay() {
           let gider = 0
           let nakitNet = 0
           let kkNet = 0
+          let havaleNet = 0
           for (const i of shownPending) {
             if (i.tur === 'GELIR') gelir += i.kurus
             else gider += i.kurus
             const signed = i.tur === 'GELIR' ? i.kurus : -i.kurus
             if (i.odeme_yontemi === 'NAKIT') nakitNet += signed
             else if (i.odeme_yontemi === 'KREDI_KARTI') kkNet += signed
+            else if (i.odeme_yontemi === 'HAVALE') havaleNet += signed
           }
           return (
             <div className="mx-6 mt-4 rounded-[14px] bg-[linear-gradient(150deg,#1C1C1E,#0A0A0A)] px-4 py-3">
@@ -395,6 +397,12 @@ export default function Onay() {
                 <div className="flex items-baseline gap-1">
                   <span className="text-xs font-semibold text-white/55">Kredi Kartı:</span>
                   <span className="text-[13px] font-bold text-[#60A5FA]">{formatTL(kkNet)}</span>
+                </div>
+                <div className="flex items-baseline gap-1">
+                  <span className="text-xs font-semibold text-white/55">Havale:</span>
+                  <span className="text-[13px] font-bold text-[#C4B5FD]">
+                    {formatTL(havaleNet)}
+                  </span>
                 </div>
               </div>
             </div>

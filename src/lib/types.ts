@@ -1,7 +1,7 @@
 export type Role = 'YONETICI' | 'MUHASEBE' | 'PERSONEL'
 export type AccountStatus = 'PENDING' | 'ACTIVE' | 'DISABLED'
 export type BusinessCode = 'SERVIS' | 'GALERI'
-export type OdemeYontemi = 'NAKIT' | 'KREDI_KARTI' // NULL on a row = not specified
+export type OdemeYontemi = 'NAKIT' | 'KREDI_KARTI' | 'HAVALE' // NULL on a row = not specified
 
 export interface Profile {
   id: string

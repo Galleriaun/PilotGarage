@@ -2,10 +2,12 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { disablePush, enablePush, getPushSubscription, pushSupported } from '../../lib/push'
+import { isDarkMode, setDarkMode } from '../../lib/theme'
 import { BackChevron } from '../auth/EyeIcon'
 import { useNotifPrefs, useSaveProfile, type NotifPrefs } from './api'
 
 const PREF_ROWS: { key: keyof NotifPrefs; label: string; desc: string }[] = [
+  { key: 'kayit', label: 'Yeni kayıtlar', desc: 'Yeni araç kaydı oluşturulduğunda' },
   { key: 'onay', label: 'Onay bekleyen işlemler', desc: 'Yeni işlem onaya düştüğünde' },
   { key: 'silme', label: 'Kayıt silme istekleri', desc: 'Bir kayıt için silme istendiğinde' },
   { key: 'uyelik', label: 'Üyelik başvuruları', desc: 'Yeni kullanıcı kaydolduğunda' },
@@ -38,6 +40,7 @@ export default function Ayarlar() {
 
   const [name, setName] = useState(profile?.full_name ?? '')
   const [nameMsg, setNameMsg] = useState('')
+  const [dark, setDark] = useState(isDarkMode)
 
   const [pushOn, setPushOn] = useState(false)
   const [pushBusy, setPushBusy] = useState(false)
@@ -136,6 +139,25 @@ export default function Ayarlar() {
           >
             {save.isPending ? 'Kaydediliyor…' : 'Kaydet'}
           </button>
+        </div>
+
+        {/* Görünüm */}
+        <div className="rounded-[18px] bg-card p-[18px]">
+          <div className="mb-3 text-[11px] font-bold tracking-[0.6px] text-faint">GÖRÜNÜM</div>
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-sm font-semibold text-ink">Koyu mod</div>
+              <div className="mt-[2px] text-xs text-muted">Karanlık tema kullan</div>
+            </div>
+            <Toggle
+              on={dark}
+              onClick={() => {
+                const next = !dark
+                setDarkMode(next)
+                setDark(next)
+              }}
+            />
+          </div>
         </div>
 
         {/* Bildirimler */}
