@@ -2,9 +2,8 @@ import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { useBusiness } from '../../app/providers/BusinessProvider'
 import { formatCreatedStamp, formatRelativeDate } from '../../lib/dates'
-import AccountMenu from '../../components/ui/AccountMenu'
 import { useKayitlar, usePhotoUrls } from './api'
-import { EmptyState, KayitThumb, SearchAddBar, StatusPill } from './components'
+import { EmptyState, KayitThumb, SearchAddBar, StatusPill, saatLabel } from './components'
 import { DURUM_META, DURUM_ORDER } from './durum'
 import { GearIcon, SwapIcon } from './icons'
 import { BellButton, TrashHeaderButton } from '../settings/HeaderButtons'
@@ -36,6 +35,11 @@ export function KayitCardMeta({ k }: { k: Kayit }) {
     <>
       <div className="mt-[2px] flex min-w-0 items-center gap-[6px] text-xs text-muted">
         <span className="whitespace-nowrap">{formatRelativeDate(k.tarih)}</span>
+        {k.baslangic_saati && k.bitis_saati && (
+          <span className="whitespace-nowrap">
+            {saatLabel(k.baslangic_saati)}–{saatLabel(k.bitis_saati)}
+          </span>
+        )}
         {arac && (
           <>
             <span className="shrink-0">-</span>
@@ -123,15 +127,14 @@ export default function YoneticiHome() {
         <div className="flex-1" />
         <TrashHeaderButton />
         <BellButton />
-        <AccountMenu side="bottom">
-          <button
-            type="button"
-            aria-label="Ayarlar"
-            className="flex h-8 w-8 cursor-pointer items-center justify-center"
-          >
-            <GearIcon />
-          </button>
-        </AccountMenu>
+        <button
+          type="button"
+          aria-label="Ayarlar"
+          onClick={() => void navigate('/ayarlar')}
+          className="flex h-8 w-8 cursor-pointer items-center justify-center"
+        >
+          <GearIcon />
+        </button>
       </div>
 
       {/* Stats */}

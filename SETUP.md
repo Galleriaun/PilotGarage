@@ -30,6 +30,8 @@ Follow strictly in order: 1–2 backend, 3 deploy, 4 auth, 5 first Yönetici, 6 
 16. `016_sabit_gider_otomatik.sql` — sabit giderler skip Onay: the cron creates them born `ONAYLANDI` (straight to kasa, like maaş)
 17. `017_prim.sql` — prim (bonus) payments via `give_prim` RPC; `set_role` refuses demoting the last active Yönetici
 18. `018_bildirim_cop.sql` — notifications (trigger-generated: pending işlem, silme isteği, yeni üyelik) + trash (deleted items snapshot, newest 50 per business)
+19. `019_tekrar_otomatik.sql` — tekrar kuralları also skip Onay: the cron creates their monthly işlem born `ONAYLANDI` (cari-targeted rules unchanged)
+20. `020_kayit_saat.sql` — kayıt başlangıç/bitiş saati (30-min slots 09:00–21:00) + `pilotgarage-saat` cron (every 15 min) that auto-advances durum: start → AKTIF, end → TAMAMLANDI
 
 **After all migrations (recommended):** run `supabase/tests/rls_smoke_test.sql` —
 paste the whole file into the SQL editor and run once. It verifies RLS isolation

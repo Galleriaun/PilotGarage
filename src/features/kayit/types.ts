@@ -25,6 +25,9 @@ export interface Kayit {
   ruhsat_no: string
   paket_id: string | null
   tarih: string // YYYY-MM-DD
+  /** "HH:MM:SS" (time column) or null — 30-min slots 09:00–21:00. */
+  baslangic_saati: string | null
+  bitis_saati: string | null
   durum: KayitDurum
   notlar: string
   /** Set = a silme isteği is waiting in the Onay queue (013). RPC-only. */
@@ -47,5 +50,7 @@ export interface KayitFields {
   ruhsat_no: string
   paket_id: string | null
   tarih: string
+  baslangic_saati: string | null
+  bitis_saati: string | null
   notlar: string
 }

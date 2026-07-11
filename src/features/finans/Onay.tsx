@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router'
 import { useBusiness } from '../../app/providers/BusinessProvider'
 import ConfirmDialog from '../../components/ui/ConfirmDialog'
 import { formatCreatedStamp, formatRelativeDate } from '../../lib/dates'
+import { formatTL } from '../../lib/money'
 import type { OdemeYontemi } from '../../lib/types'
 import { BackChevron } from '../auth/EyeIcon'
 import { amountLabel } from './TxCard'
@@ -21,15 +22,19 @@ import {
   type KayitSilmeTalebi,
 } from './types'
 
-type FilterKey = 'TUMU' | 'GELIR' | 'GIDER' | 'KAYIT' | 'CARI_HESAP' | 'MANUEL' | 'SILME'
+type FilterKey = 'TUMU' | 'MANUEL' | 'KAYIT' | 'CARI_HESAP' | 'SILME'
+type ManuelTur = 'TUMU' | 'GELIR' | 'GIDER'
 const FILTERS: { key: FilterKey; label: string }[] = [
+  { key: 'TUMU', label: 'Tümü' },
+  { key: 'MANUEL', label: 'Manuel' },
+  { key: 'KAYIT', label: 'Kayıt' },
+  { key: 'CARI_HESAP', label: 'İşletme' },
+  { key: 'SILME', label: 'Kayıt Silme' },
+]
+const MANUEL_TURLER: { key: ManuelTur; label: string }[] = [
   { key: 'TUMU', label: 'Tümü' },
   { key: 'GELIR', label: 'Gelir' },
   { key: 'GIDER', label: 'Gider' },
-  { key: 'KAYIT', label: 'Kayıttan' },
-  { key: 'CARI_HESAP', label: 'Cari Hesap' },
-  { key: 'MANUEL', label: 'Manuel' },
-  { key: 'SILME', label: 'Kayıt Silme' },
 ]
 
 const SOURCE_META: Record<IslemKaynak, { label: string; bg: string; color: string }> = {
@@ -208,6 +213,9 @@ export default function Onay() {
   const [rejecting, setRejecting] = useState<Islem | null>(null)
   const [silmeConfirm, setSilmeConfirm] = useState<KayitSilmeTalebi | null>(null)
   const [filter, setFilter] = useState<FilterKey>('TUMU')
+  const [manuelTur, setManuelTur] = useState<ManuelTur>('TUMU')
+
+  const showBar = filter === 'MANUEL' || filter === 'KAYIT' || filter === 'CARI_HESAP'
 
   const shownSilme =
     filter === 'TUMU' || filter === 'SILME' ? silmeTalepleri : []
@@ -216,8 +224,8 @@ export default function Onay() {
       ? true
       : filter === 'SILME'
         ? false
-        : filter === 'GELIR' || filter === 'GIDER'
-          ? i.tur === filter
+        : filter === 'MANUEL'
+          ? i.kaynak === 'MANUEL' && (manuelTur === 'TUMU' || i.tur === manuelTur)
           : i.kaynak === filter,
   )
 
@@ -308,7 +316,10 @@ export default function Onay() {
             <button
               key={f.key}
               type="button"
-              onClick={() => setFilter(f.key)}
+              onClick={() => {
+                setFilter(f.key)
+                setManuelTur('TUMU')
+              }}
               className="shrink-0 cursor-pointer whitespace-nowrap rounded-[20px] px-[14px] py-[8px] text-[13px] font-semibold"
               style={{
                 background: selected ? '#111' : '#F2F2F2',
@@ -320,6 +331,75 @@ export default function Onay() {
           )
         })}
       </div>
+
+      {filter === 'MANUEL' && (
+        <div className="flex gap-2 px-6 pt-2">
+          {MANUEL_TURLER.map((t) => {
+            const selected = manuelTur === t.key
+            return (
+              <button
+                key={t.key}
+                type="button"
+                onClick={() => setManuelTur(t.key)}
+                className="shrink-0 cursor-pointer whitespace-nowrap rounded-[20px] px-3 py-[6px] text-xs font-semibold"
+                style={{
+                  background: selected ? '#3A3A3A' : '#F7F7F7',
+                  color: selected ? '#fff' : '#999',
+                }}
+              >
+                {t.label}
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      {showBar &&
+        (() => {
+          let gelir = 0
+          let gider = 0
+          let nakitNet = 0
+          let kkNet = 0
+          for (const i of shownPending) {
+            if (i.tur === 'GELIR') gelir += i.kurus
+            else gider += i.kurus
+            const signed = i.tur === 'GELIR' ? i.kurus : -i.kurus
+            if (i.odeme_yontemi === 'NAKIT') nakitNet += signed
+            else if (i.odeme_yontemi === 'KREDI_KARTI') kkNet += signed
+          }
+          return (
+            <div className="mx-6 mt-4 rounded-[14px] bg-[linear-gradient(150deg,#1C1C1E,#0A0A0A)] px-4 py-3">
+              <div className="flex items-center gap-[18px]">
+                <div className="flex items-baseline gap-1">
+                  <span className="text-xs font-semibold text-white/55">Toplam:</span>
+                  <span className="text-[13px] font-bold text-white">
+                    {formatTL(gelir - gider)}
+                  </span>
+                </div>
+                <div className="flex items-baseline gap-1">
+                  <span className="text-xs font-semibold text-white/55">Gelir:</span>
+                  <span className="text-[13px] font-bold text-[#4ADE80]">{formatTL(gelir)}</span>
+                </div>
+                <div className="flex items-baseline gap-1">
+                  <span className="text-xs font-semibold text-white/55">Gider:</span>
+                  <span className="text-[13px] font-bold text-[#F87171]">{formatTL(gider)}</span>
+                </div>
+              </div>
+              <div className="mt-2 flex items-center gap-[18px] border-t border-white/10 pt-2">
+                <div className="flex items-baseline gap-1">
+                  <span className="text-xs font-semibold text-white/55">Nakit:</span>
+                  <span className="text-[13px] font-bold text-[#4ADE80]">
+                    {formatTL(nakitNet)}
+                  </span>
+                </div>
+                <div className="flex items-baseline gap-1">
+                  <span className="text-xs font-semibold text-white/55">Kredi Kartı:</span>
+                  <span className="text-[13px] font-bold text-[#60A5FA]">{formatTL(kkNet)}</span>
+                </div>
+              </div>
+            </div>
+          )
+        })()}
 
       {isPending ? (
         <div className="flex justify-center py-14">

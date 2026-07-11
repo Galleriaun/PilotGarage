@@ -13,7 +13,7 @@ import {
   useUpdateDurum,
   useUpdateKayit,
 } from './api'
-import { PaketDropdown, paketFullLabel } from './components'
+import { PaketDropdown, SaatDropdown, paketFullLabel, saatLabel } from './components'
 import { DURUM_META, DURUM_MENU_META, DURUM_ORDER } from './durum'
 import {
   ArrowLeftSmall,
@@ -60,7 +60,6 @@ export default function KayitDetay() {
   const [lightbox, setLightbox] = useState(false)
   const [durumMenuOpen, setDurumMenuOpen] = useState(false)
   const [pendingDurum, setPendingDurum] = useState<KayitDurum | null>(null)
-  const [silConfirm, setSilConfirm] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const fotograflar = useMemo(() => kayit?.fotograflar ?? [], [kayit])
@@ -111,6 +110,8 @@ export default function KayitDetay() {
       ruhsat_no: kayit.ruhsat_no,
       paket_id: kayit.paket_id,
       tarih: kayit.tarih,
+      baslangic_saati: kayit.baslangic_saati,
+      bitis_saati: kayit.bitis_saati,
       notlar: kayit.notlar,
     })
   }
@@ -130,6 +131,14 @@ export default function KayitDetay() {
       setError('Geçerli bir kilometre girin.')
       return
     }
+    if (
+      draft.baslangic_saati &&
+      draft.bitis_saati &&
+      draft.bitis_saati.slice(0, 5) <= draft.baslangic_saati.slice(0, 5)
+    ) {
+      setError('Bitiş saati başlangıçtan sonra olmalı.')
+      return
+    }
     try {
       await updateKayit.mutateAsync({ id, fields: draft })
       setDraft(null)
@@ -138,14 +147,14 @@ export default function KayitDetay() {
     }
   }
 
-  async function confirmSilme() {
+  // No confirm: the kayıt just moves to the Onay queue (Reddet brings it back)
+  async function onSil() {
     setError('')
     try {
       await requestSilme.mutateAsync({ id })
-      setSilConfirm(false)
+      void navigate(-1)
     } catch {
-      setSilConfirm(false)
-      setError('Silme isteği gönderilemedi. Tekrar deneyin.')
+      setError('Silinemedi. Tekrar deneyin.')
     }
   }
 
@@ -489,6 +498,33 @@ export default function KayitDetay() {
           </InfoCard>
         </div>
 
+        {/* Saat */}
+        <div className="mb-3 rounded-[14px] bg-card px-4 py-[14px]">
+          <div className="mb-1 text-[11px] font-bold tracking-[0.5px] text-faint">SAAT</div>
+          {editing && draft ? (
+            <div className="flex gap-[10px]">
+              <SaatDropdown
+                value={draft.baslangic_saati}
+                onChange={(v) => setDraft({ ...draft, baslangic_saati: v })}
+                placeholder="Başlangıç saati"
+              />
+              <SaatDropdown
+                value={draft.bitis_saati}
+                onChange={(v) => setDraft({ ...draft, bitis_saati: v })}
+                placeholder="Bitiş saati"
+              />
+            </div>
+          ) : (
+            <div className="text-[15px] font-semibold text-ink">
+              {kayit.baslangic_saati || kayit.bitis_saati
+                ? `${kayit.baslangic_saati ? saatLabel(kayit.baslangic_saati) : '—'} – ${
+                    kayit.bitis_saati ? saatLabel(kayit.bitis_saati) : '—'
+                  }`
+                : '—'}
+            </div>
+          )}
+        </div>
+
         <div className="mb-5 rounded-[14px] bg-card px-4 py-[14px]">
           <div className="mb-[6px] text-[11px] font-bold tracking-[0.5px] text-faint">NOTLAR</div>
           {editing && draft ? (
@@ -518,10 +554,11 @@ export default function KayitDetay() {
         {!editing && !kayit.silme_talebi_at && (
           <button
             type="button"
-            onClick={() => setSilConfirm(true)}
-            className="pressable mb-3 w-full cursor-pointer rounded-[14px] bg-[#FEF3F2] py-4 text-[15px] font-semibold text-danger"
+            onClick={() => void onSil()}
+            disabled={requestSilme.isPending}
+            className="pressable mb-3 w-full cursor-pointer rounded-[14px] bg-[#FEF3F2] py-4 text-[15px] font-semibold text-danger disabled:opacity-60"
           >
-            Kaydı Sil
+            {requestSilme.isPending ? 'Siliniyor…' : 'Kaydı Sil'}
           </button>
         )}
       </div>
@@ -581,16 +618,6 @@ export default function KayitDetay() {
         onCancel={() => setPendingDurum(null)}
       />
 
-      <ConfirmDialog
-        open={silConfirm}
-        title="Kaydı sil"
-        message={`${kayit.plaka} kaydı için silme isteği Onay bölümüne gönderilecek.`}
-        confirmLabel="Sil"
-        danger
-        busy={requestSilme.isPending}
-        onConfirm={() => void confirmSilme()}
-        onCancel={() => setSilConfirm(false)}
-      />
     </div>
   )
 }

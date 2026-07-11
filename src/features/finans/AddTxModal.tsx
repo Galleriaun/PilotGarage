@@ -209,7 +209,7 @@ export default function AddTxModal({ open, tur, businessId, onClose }: AddTxModa
                 {gun > 0 && (
                   <p className="mt-[6px] text-xs leading-relaxed text-faint">
                     Her ayın {gun}. günü aynı {tur === 'GELIR' ? 'gelir' : 'gider'} otomatik
-                    olarak onay kuyruğuna eklenir.
+                    olarak kasaya işlenir.
                   </p>
                 )}
               </div>

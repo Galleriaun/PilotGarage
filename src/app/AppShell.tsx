@@ -232,18 +232,63 @@ function PersonelNav() {
   )
 }
 
+/** Desktop-only left sidebar; replaces the bottom nav on md+ screens. */
+function Sidebar({ isPersonel }: { isPersonel: boolean }) {
+  const navigate = useNavigate()
+  const { pathname } = useLocation()
+  const items = isPersonel
+    ? [
+        { to: '/personel', label: 'Ana Sayfa', icon: HomeIcon, active: pathname.startsWith('/personel') },
+        { to: '/kayit/yeni', label: 'Yeni Kayıt', icon: DocIcon, active: pathname === '/kayit/yeni' },
+        { to: '/bildirimler', label: 'Bildirimler', icon: BellIcon, active: pathname.startsWith('/bildirimler') },
+        { to: '/ayarlar', label: 'Ayarlar', icon: UserIcon, active: pathname.startsWith('/ayarlar') },
+      ]
+    : [
+        { to: '/yonetici', label: 'Kayıt', icon: DocIcon, active: pathname.startsWith('/yonetici') || pathname.startsWith('/kayit/') },
+        { to: '/kayit/yeni', label: 'Yeni Kayıt', icon: HomeIcon, active: pathname === '/kayit/yeni' },
+        { to: '/yonetim', label: 'Finans', icon: GridIcon, active: pathname.startsWith('/yonetim') },
+        { to: '/bildirimler', label: 'Bildirimler', icon: BellIcon, active: pathname.startsWith('/bildirimler') },
+        { to: '/ayarlar', label: 'Ayarlar', icon: UserIcon, active: pathname.startsWith('/ayarlar') },
+      ]
+  return (
+    <aside className="hidden w-[240px] shrink-0 flex-col gap-1 border-r border-[#E8E8E8] bg-white px-4 py-6 md:flex">
+      <div className="mb-6 px-3 text-[19px] font-bold tracking-[-0.3px] text-ink">
+        PilotGarage
+      </div>
+      {items.map((it) => (
+        <button
+          key={it.to}
+          type="button"
+          onClick={() => void navigate(it.to)}
+          className="flex cursor-pointer items-center gap-3 rounded-[12px] px-4 py-3 text-left text-sm font-semibold"
+          style={{
+            background: it.active ? '#F2F2F2' : 'transparent',
+            color: it.active ? ACTIVE : INACTIVE,
+          }}
+        >
+          <it.icon color={it.active ? ACTIVE : INACTIVE} />
+          {it.label}
+        </button>
+      ))}
+    </aside>
+  )
+}
+
 export default function AppShell() {
   const { profile } = useAuth()
   const isPersonel = profile?.role === 'PERSONEL'
   return (
-    // Desktop: gray backdrop with the app as a centered phone-width panel;
-    // mobile keeps the edge-to-edge layout untouched.
-    <div className="h-dvh md:bg-[#ECECEC] md:py-6">
-      <div className="mx-auto flex h-full w-full max-w-[480px] flex-col overflow-hidden bg-white md:rounded-[28px] md:border md:border-[#E2E2E2] md:shadow-[0_24px_60px_rgba(0,0,0,0.10)]">
+    // Desktop: sidebar navigation + a wider centered content column;
+    // mobile keeps the edge-to-edge layout with the bottom nav.
+    <div className="flex h-dvh md:bg-[#F3F3F3]">
+      <Sidebar isPersonel={isPersonel} />
+      <div className="mx-auto flex h-full w-full max-w-[480px] flex-col overflow-hidden bg-white md:max-w-[680px] md:border-x md:border-[#E8E8E8]">
         <main className="flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain">
           <Outlet />
         </main>
-        {isPersonel ? <PersonelNav /> : <YoneticiNav />}
+        <div className="shrink-0 md:hidden">
+          {isPersonel ? <PersonelNav /> : <YoneticiNav />}
+        </div>
       </div>
     </div>
   )

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router'
 import { useBusiness } from '../../app/providers/BusinessProvider'
 import { istanbulTodayISO } from '../../lib/dates'
 import { useCreateKayit, usePaketler } from './api'
-import { PaketDropdown } from './components'
+import { PaketDropdown, SaatDropdown } from './components'
 import { DURUM_ORDER, DURUM_META, DURUM_SEGMENT_META } from './durum'
 import { PhotoPlaceholderIcon, PlusDashedIcon, XIcon } from './icons'
 import { BackChevron } from '../auth/EyeIcon'
@@ -41,6 +41,8 @@ export default function YeniKayit() {
   const [ruhsatNo, setRuhsatNo] = useState('')
   const [paketId, setPaketId] = useState<string | null>(null)
   const [tarih, setTarih] = useState(istanbulTodayISO())
+  const [baslangicSaati, setBaslangicSaati] = useState<string | null>(null)
+  const [bitisSaati, setBitisSaati] = useState<string | null>(null)
   const [notlar, setNotlar] = useState('')
   const [durum, setDurum] = useState<KayitDurum>('AKTIF')
   const [photos, setPhotos] = useState<PhotoDraft[]>([])
@@ -92,6 +94,10 @@ export default function YeniKayit() {
       setError('Tarih seçin.')
       return
     }
+    if (baslangicSaati && bitisSaati && bitisSaati <= baslangicSaati) {
+      setError('Bitiş saati başlangıçtan sonra olmalı.')
+      return
+    }
 
     try {
       const { kayitId, photoFailures } = await createKayit.mutateAsync({
@@ -106,6 +112,8 @@ export default function YeniKayit() {
           ruhsat_no: ruhsatNo.trim(),
           paket_id: paketId,
           tarih,
+          baslangic_saati: baslangicSaati,
+          bitis_saati: bitisSaati,
           notlar: notlar.trim(),
         },
         durum,
@@ -227,6 +235,27 @@ export default function YeniKayit() {
               onChange={(e) => setTarih(e.target.value)}
               className={inputCls}
             />
+          </div>
+
+          <div>
+            <FieldLabel>SAAT</FieldLabel>
+            <div className="flex gap-[10px]">
+              <SaatDropdown
+                value={baslangicSaati}
+                onChange={setBaslangicSaati}
+                placeholder="Başlangıç saati"
+              />
+              <SaatDropdown
+                value={bitisSaati}
+                onChange={setBitisSaati}
+                placeholder="Bitiş saati"
+              />
+            </div>
+            {baslangicSaati && bitisSaati && (
+              <p className="mt-[6px] text-xs leading-relaxed text-faint">
+                Saati gelince kayıt otomatik Aktif, bitişte Tamamlandı olur.
+              </p>
+            )}
           </div>
 
           <div>

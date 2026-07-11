@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router'
 import { useBusiness } from '../../app/providers/BusinessProvider'
-import AccountMenu from '../../components/ui/AccountMenu'
 import { istanbulTodayISO, monthRangeISO } from '../../lib/dates'
 import { formatTL } from '../../lib/money'
 import { GearIcon, SwapIcon } from '../kayit/icons'
@@ -160,15 +159,14 @@ export default function Yonetim() {
         <div className="flex-1" />
         <TrashHeaderButton />
         <BellButton />
-        <AccountMenu side="bottom">
-          <button
-            type="button"
-            aria-label="Ayarlar"
-            className="flex h-9 w-9 cursor-pointer items-center justify-center"
-          >
-            <GearIcon />
-          </button>
-        </AccountMenu>
+        <button
+          type="button"
+          aria-label="Ayarlar"
+          onClick={() => void navigate('/ayarlar')}
+          className="flex h-9 w-9 cursor-pointer items-center justify-center"
+        >
+          <GearIcon />
+        </button>
       </div>
 
       <div className="flex items-center justify-between px-6 pt-1">
@@ -398,7 +396,7 @@ export default function Yonetim() {
           entrance animation transforms the wrapper, which would hijack
           position:fixed and pin the button to the scroll content. */}
       {createPortal(
-        <div className="pointer-events-none fixed inset-x-0 bottom-[calc(72px+env(safe-area-inset-bottom))] z-40 mx-auto flex w-full max-w-[480px] justify-center">
+        <div className="pointer-events-none fixed inset-x-0 bottom-[calc(72px+env(safe-area-inset-bottom))] z-40 mx-auto flex w-full max-w-[480px] justify-center md:left-[240px] md:bottom-8">
           <button
             type="button"
             onClick={() => void navigate('/yonetim/onay')}

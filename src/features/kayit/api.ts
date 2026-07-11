@@ -32,6 +32,8 @@ export function useKayitlar(businessId: string) {
         .from('kayitlar')
         .select(KAYIT_SELECT)
         .eq('business_id', businessId)
+        // a kayıt with a pending silme isteği lives in the Onay queue, not here
+        .is('silme_talebi_at', null)
         .order('tarih', { ascending: false })
         .order('created_at', { ascending: false })
       if (error) throw error

@@ -10,6 +10,83 @@ import {
   SearchIcon,
 } from './icons'
 
+// ── Saat (30-min slots, 09:00–21:00) ─────────────────────────
+
+export const SAAT_OPTIONS: string[] = Array.from({ length: 25 }, (_, i) => {
+  const mins = 9 * 60 + i * 30
+  const h = Math.floor(mins / 60)
+  const m = mins % 60
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+})
+
+/** "14:00:00" | "14:00" -> "14.00" */
+export function saatLabel(t: string): string {
+  return t.slice(0, 5).replace(':', '.')
+}
+
+/** Başlangıç/bitiş saati picker — same expandable-button pattern as the
+ *  other dropdowns; "Yok" clears the value. */
+export function SaatDropdown({
+  value,
+  onChange,
+  placeholder,
+}: {
+  value: string | null
+  onChange: (v: string | null) => void
+  placeholder: string
+}) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="min-w-0 flex-1">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full cursor-pointer items-center justify-between gap-2 rounded-[12px] bg-field px-[14px] py-[13px]"
+      >
+        <span
+          className="truncate text-[14px] font-semibold"
+          style={{ color: value ? '#111' : '#ADADAD' }}
+        >
+          {value ? saatLabel(value) : placeholder}
+        </span>
+        <ChevronDownIcon size={12} color="#888" rotated={open} />
+      </button>
+      {open && (
+        <div className="menu-in mt-[6px] max-h-[200px] overflow-y-auto rounded-[14px] bg-card p-[6px]">
+          <button
+            type="button"
+            onClick={() => {
+              onChange(null)
+              setOpen(false)
+            }}
+            className="w-full cursor-pointer rounded-[10px] px-3 py-[10px] text-left text-[14px] font-semibold text-ink"
+            style={{ background: value === null ? '#F2F2F2' : 'transparent' }}
+          >
+            Yok
+          </button>
+          {SAAT_OPTIONS.map((t) => {
+            const selected = value?.slice(0, 5) === t
+            return (
+              <button
+                key={t}
+                type="button"
+                onClick={() => {
+                  onChange(t)
+                  setOpen(false)
+                }}
+                className="w-full cursor-pointer rounded-[10px] px-3 py-[10px] text-left text-[14px] font-semibold text-ink"
+                style={{ background: selected ? '#F2F2F2' : 'transparent' }}
+              >
+                {saatLabel(t)}
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function paketPriceLabel(paket: Paket): string {
   return formatTL(numericStringToKurus(String(paket.price)))
 }
