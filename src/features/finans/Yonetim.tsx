@@ -5,7 +5,8 @@ import { useBusiness } from '../../app/providers/BusinessProvider'
 import AccountMenu from '../../components/ui/AccountMenu'
 import { istanbulTodayISO, monthRangeISO } from '../../lib/dates'
 import { formatTL } from '../../lib/money'
-import { BellOutlineIcon, GearIcon, SwapIcon } from '../kayit/icons'
+import { GearIcon, SwapIcon } from '../kayit/icons'
+import { BellButton, TrashHeaderButton } from '../settings/HeaderButtons'
 import FinansMenu from '../yonetim/FinansMenu'
 import AddTxModal from './AddTxModal'
 import TxCard from './TxCard'
@@ -157,13 +158,8 @@ export default function Yonetim() {
           </button>
         )}
         <div className="flex-1" />
-        <button
-          type="button"
-          aria-label="Bildirimler (yakında)"
-          className="flex h-9 w-9 cursor-pointer items-center justify-center"
-        >
-          <BellOutlineIcon />
-        </button>
+        <TrashHeaderButton />
+        <BellButton />
         <AccountMenu side="bottom">
           <button
             type="button"

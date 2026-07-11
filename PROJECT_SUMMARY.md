@@ -30,9 +30,9 @@ Vite 8.1 · React 19.2 · TypeScript 6.0 · Tailwind CSS 4.3 · React Router 8.1
 
 ---
 
-## Database — 17 migrations
+## Database — 18 migrations
 
-Run in order in the Supabase SQL editor. **1–7 applied as of 2026-07-08; 8–17 are new (Sprint 4) — run them.**
+Run in order in the Supabase SQL editor. **1–7 applied as of 2026-07-08; 8–18 are new (Sprint 4) — run them.**
 
 1. `001_schema.sql` — enums, tables, `v_kasa_ozet` view (balance is a **view over ONAYLANDI rows**, never stored)
 2. `002_functions.sql` — RLS helpers, triggers, all RPCs (Onay gate, roles, cron body)
@@ -51,6 +51,7 @@ Run in order in the Supabase SQL editor. **1–7 applied as of 2026-07-08; 8–1
 15. `015_cari_silme.sql` — `delete_cari_isletme` RPC (finance): deletes the işletme + hareketler + its rules, removes still-pending kasa entries; decided işlemler stay detached and render as "Silinen işletme: …".
 16. `016_sabit_gider_otomatik.sql` — sabit giderler born `ONAYLANDI` (owner decision 2026-07-10: pre-approved by definition, straight to kasa like maaş/avans — the **second** exception to the Onay gate).
 17. `017_prim.sql` — `PRIM` odeme_tur + `give_prim` RPC (born-ONAYLANDI gider, bonus on top of maaş, never deducted); `set_role` gains a last-active-Yönetici guard.
+18. `018_bildirim_cop.sql` — `notifications` (rows created by triggers: BEKLIYOR işlem → finance, silme isteği → finance, new signup → Yönetici; own-rows RLS, mark-read column grant, `profiles.notif_prefs`) + `trash` (AFTER DELETE snapshot of kayıt/işletme/hareket/sabit gider/tekrar kuralı, capped at newest 50 per business, finance-only read; hareket cascade skipped when its işletme is the deleted item).
 
 **Required Supabase extensions:** `pgcrypto`, `pg_cron`.
 

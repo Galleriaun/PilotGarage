@@ -206,7 +206,8 @@ function PersonelNav() {
         </button>
         <button
           type="button"
-          aria-label="Bildirimler (yakında)"
+          aria-label="Bildirimler"
+          onClick={() => void navigate('/bildirimler')}
           className="flex min-w-[52px] cursor-pointer flex-col items-center gap-[3px]"
         >
           <BellIcon color={INACTIVE} />
@@ -235,11 +236,15 @@ export default function AppShell() {
   const { profile } = useAuth()
   const isPersonel = profile?.role === 'PERSONEL'
   return (
-    <div className="mx-auto flex h-dvh w-full max-w-[480px] flex-col overflow-hidden bg-white">
-      <main className="flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain">
-        <Outlet />
-      </main>
-      {isPersonel ? <PersonelNav /> : <YoneticiNav />}
+    // Desktop: gray backdrop with the app as a centered phone-width panel;
+    // mobile keeps the edge-to-edge layout untouched.
+    <div className="h-dvh md:bg-[#ECECEC] md:py-6">
+      <div className="mx-auto flex h-full w-full max-w-[480px] flex-col overflow-hidden bg-white md:rounded-[28px] md:border md:border-[#E2E2E2] md:shadow-[0_24px_60px_rgba(0,0,0,0.10)]">
+        <main className="flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain">
+          <Outlet />
+        </main>
+        {isPersonel ? <PersonelNav /> : <YoneticiNav />}
+      </div>
     </div>
   )
 }

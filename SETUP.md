@@ -29,6 +29,7 @@ Follow strictly in order: 1–2 backend, 3 deploy, 4 auth, 5 first Yönetici, 6 
 15. `015_cari_silme.sql` — finance can delete a cari işletme (pending kasa entries die with it; approved işlemler stay as "Silinen işletme" history)
 16. `016_sabit_gider_otomatik.sql` — sabit giderler skip Onay: the cron creates them born `ONAYLANDI` (straight to kasa, like maaş)
 17. `017_prim.sql` — prim (bonus) payments via `give_prim` RPC; `set_role` refuses demoting the last active Yönetici
+18. `018_bildirim_cop.sql` — notifications (trigger-generated: pending işlem, silme isteği, yeni üyelik) + trash (deleted items snapshot, newest 50 per business)
 
 **After all migrations (recommended):** run `supabase/tests/rls_smoke_test.sql` —
 paste the whole file into the SQL editor and run once. It verifies RLS isolation

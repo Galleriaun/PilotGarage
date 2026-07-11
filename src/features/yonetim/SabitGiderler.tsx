@@ -3,8 +3,9 @@ import { useBusiness } from '../../app/providers/BusinessProvider'
 import ConfirmDialog from '../../components/ui/ConfirmDialog'
 import { formatRelativeDate } from '../../lib/dates'
 import { formatTL, parseTLToKurus, numericStringToKurus } from '../../lib/money'
+import { ChevronDownIcon } from '../kayit/icons'
 import { useKategoriler, useSabitGiderler, useTekrarKurallari } from '../finans/api'
-import type { SabitGider, TekrarKural, TekrarSiklik } from '../finans/types'
+import type { Kategori, SabitGider, TekrarKural, TekrarSiklik } from '../finans/types'
 import {
   useCreateSabitGider,
   useDeleteSabitGider,
@@ -54,6 +55,65 @@ function StopIcon({ size = 14 }: { size?: number }) {
       <circle cx="12" cy="12" r="9" />
       <rect x="9" y="9" width="6" height="6" rx="1" fill="#C62828" stroke="none" />
     </svg>
+  )
+}
+
+/** Kategori picker in the GunDropdown style (expandable button). */
+function KategoriDropdown({
+  kategoriler,
+  value,
+  onChange,
+}: {
+  kategoriler: Kategori[]
+  value: string | null
+  onChange: (id: string | null) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const label = value
+    ? (kategoriler.find((k) => k.id === value)?.label ?? 'Kategori')
+    : 'Kategori seç'
+  const options: { id: string | null; label: string }[] = [
+    { id: null, label: 'Yok' },
+    ...kategoriler.map((k) => ({ id: k.id, label: k.label })),
+  ]
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full cursor-pointer items-center justify-between rounded-[12px] bg-field px-[14px] py-[13px]"
+      >
+        <span
+          className="text-[15px] font-medium"
+          style={{ color: value === null ? '#ADADAD' : '#111' }}
+        >
+          {label}
+        </span>
+        <ChevronDownIcon size={12} color="#888" rotated={open} />
+      </button>
+      {open && (
+        <div className="menu-in mt-[6px] max-h-[220px] overflow-y-auto rounded-[14px] bg-card p-[6px]">
+          {options.map((o) => {
+            const selected = value === o.id
+            return (
+              <button
+                key={o.id ?? 'yok'}
+                type="button"
+                onClick={() => {
+                  onChange(o.id)
+                  setOpen(false)
+                }}
+                className="flex w-full cursor-pointer items-center justify-between gap-4 rounded-[10px] px-3 py-[11px] text-left text-[15px] font-semibold text-ink"
+                style={{ background: selected ? '#F2F2F2' : 'transparent' }}
+              >
+                {o.label}
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -305,27 +365,11 @@ export default function SabitGiderler() {
         {giderKategorileri.length > 0 && (
           <div>
             <div className={modalFieldLabel}>KATEGORİ</div>
-            <div className="flex flex-wrap gap-[6px]">
-              {giderKategorileri.map((k) => {
-                const selected = modal.kategoriId === k.id
-                return (
-                  <button
-                    key={k.id}
-                    type="button"
-                    onClick={() =>
-                      setModal((m) => ({ ...m, kategoriId: selected ? null : k.id }))
-                    }
-                    className="cursor-pointer rounded-[10px] px-3 py-[7px] text-[12.5px] font-semibold"
-                    style={{
-                      background: selected ? '#111' : '#F2F2F2',
-                      color: selected ? '#fff' : '#666',
-                    }}
-                  >
-                    {k.label}
-                  </button>
-                )
-              })}
-            </div>
+            <KategoriDropdown
+              kategoriler={giderKategorileri}
+              value={modal.kategoriId}
+              onChange={(kategoriId) => setModal((m) => ({ ...m, kategoriId }))}
+            />
           </div>
         )}
       </FormModal>

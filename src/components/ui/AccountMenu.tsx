@@ -1,5 +1,6 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import type { ReactNode } from 'react'
+import { useNavigate } from 'react-router'
 import { useAuth } from '../../app/providers/AuthProvider'
 
 /**
@@ -14,6 +15,7 @@ export default function AccountMenu({
   side?: 'top' | 'bottom'
 }) {
   const { profile, signOut } = useAuth()
+  const navigate = useNavigate()
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>{children}</DropdownMenu.Trigger>
@@ -29,6 +31,12 @@ export default function AccountMenu({
               <p className="truncate text-[13px] font-semibold text-ink">{profile.full_name}</p>
             </div>
           )}
+          <DropdownMenu.Item
+            onSelect={() => void navigate('/ayarlar')}
+            className="mt-1 cursor-pointer rounded-[8px] px-3 py-[9px] text-[13px] font-semibold text-ink outline-none data-[highlighted]:bg-field"
+          >
+            Ayarlar
+          </DropdownMenu.Item>
           <DropdownMenu.Item
             onSelect={() => void signOut()}
             className="mt-1 cursor-pointer rounded-[8px] px-3 py-[9px] text-[13px] font-semibold text-danger outline-none data-[highlighted]:bg-danger-soft"

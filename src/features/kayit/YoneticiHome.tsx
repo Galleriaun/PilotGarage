@@ -6,7 +6,8 @@ import AccountMenu from '../../components/ui/AccountMenu'
 import { useKayitlar, usePhotoUrls } from './api'
 import { EmptyState, KayitThumb, SearchAddBar, StatusPill } from './components'
 import { DURUM_META, DURUM_ORDER } from './durum'
-import { BellOutlineIcon, GearIcon, SwapIcon } from './icons'
+import { GearIcon, SwapIcon } from './icons'
+import { BellButton, TrashHeaderButton } from '../settings/HeaderButtons'
 import type { Kayit, KayitDurum } from './types'
 
 type Filter = 'ALL' | KayitDurum
@@ -120,13 +121,8 @@ export default function YoneticiHome() {
           </button>
         )}
         <div className="flex-1" />
-        <button
-          type="button"
-          aria-label="Bildirimler (yakında)"
-          className="flex h-8 w-8 cursor-pointer items-center justify-center"
-        >
-          <BellOutlineIcon />
-        </button>
+        <TrashHeaderButton />
+        <BellButton />
         <AccountMenu side="bottom">
           <button
             type="button"

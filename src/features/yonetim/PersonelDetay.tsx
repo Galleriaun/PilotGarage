@@ -25,7 +25,7 @@ import {
   useSetStatus,
   useUpdateMemberPay,
 } from './api'
-import { ROLE_LABELS, ROLE_OPTIONS } from './types'
+import { ROLE_LABELS, ROLE_OPTIONS, type PersonelOdeme } from './types'
 import {
   Avatar,
   FormModal,
@@ -46,6 +46,114 @@ function cycleStartISO(gun: number, todayISO: string): string {
   const py = m === 1 ? y - 1 : y
   const pm = m === 1 ? 12 : m - 1
   return `${py}-${String(pm).padStart(2, '0')}-${dd}`
+}
+
+/** Payment history: last 3 collapsed; "Tümünü Gör" expands to month rows
+ *  (with totals) that open on tap. */
+function OdemeList({
+  items,
+  empty,
+  fallback,
+  positive,
+}: {
+  items: PersonelOdeme[]
+  empty: string
+  fallback: string
+  positive: boolean
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const [openMonth, setOpenMonth] = useState<string | null>(null)
+
+  if (items.length === 0) {
+    return (
+      <div className="rounded-[14px] bg-card p-[18px] text-center text-[13px] text-muted">
+        {empty}
+      </div>
+    )
+  }
+
+  const row = (o: PersonelOdeme) => (
+    <div
+      key={o.id}
+      className="flex items-center justify-between gap-3 rounded-[14px] bg-card px-[15px] py-[13px]"
+    >
+      <div className="min-w-0">
+        <div className="truncate text-sm font-semibold text-ink">{o.note || fallback}</div>
+        <div className="mt-[2px] text-xs text-muted">{formatRelativeDate(o.tarih)}</div>
+      </div>
+      <div
+        className={`shrink-0 text-[15px] font-bold ${positive ? 'text-success' : 'text-danger'}`}
+      >
+        {positive ? '+' : '-'}
+        {formatTL(numericStringToKurus(String(o.tutar)))}
+      </div>
+    </div>
+  )
+
+  if (!expanded) {
+    return (
+      <div className="flex flex-col gap-2">
+        {items.slice(0, 3).map(row)}
+        {items.length > 3 && (
+          <button
+            type="button"
+            onClick={() => setExpanded(true)}
+            className="cursor-pointer rounded-[14px] bg-field py-[10px] text-center text-[13px] font-semibold text-ink"
+          >
+            Tümünü Gör ({items.length})
+          </button>
+        )}
+      </div>
+    )
+  }
+
+  const months = new Map<string, PersonelOdeme[]>()
+  for (const o of items) {
+    const k = o.tarih.slice(0, 7)
+    months.set(k, [...(months.get(k) ?? []), o])
+  }
+  const keys = [...months.keys()].sort().reverse()
+
+  return (
+    <div className="flex flex-col gap-2">
+      {keys.map((k) => {
+        const rows = months.get(k) ?? []
+        const total = rows.reduce((s, o) => s + numericStringToKurus(String(o.tutar)), 0)
+        const label = `${TR_MONTHS_FULL[Number(k.slice(5, 7)) - 1] ?? ''} ${k.slice(0, 4)}`
+        const open = openMonth === k
+        return (
+          <div key={k} className="flex flex-col gap-2">
+            <button
+              type="button"
+              onClick={() => setOpenMonth(open ? null : k)}
+              className="flex cursor-pointer items-center justify-between rounded-[14px] bg-field px-[15px] py-3"
+            >
+              <span className="text-[13px] font-bold text-ink">
+                {label} ({rows.length})
+              </span>
+              <span
+                className={`text-[13px] font-bold ${positive ? 'text-success' : 'text-danger'}`}
+              >
+                {positive ? '+' : '-'}
+                {formatTL(total)}
+              </span>
+            </button>
+            {open && rows.map(row)}
+          </div>
+        )
+      })}
+      <button
+        type="button"
+        onClick={() => {
+          setExpanded(false)
+          setOpenMonth(null)
+        }}
+        className="cursor-pointer rounded-[14px] bg-field py-[10px] text-center text-[13px] font-semibold text-muted"
+      >
+        Gizle
+      </button>
+    </div>
+  )
 }
 
 interface Draft {
@@ -434,30 +542,12 @@ export default function PersonelDetay() {
               <span className="text-[13px] font-semibold text-white">Avans Ver</span>
             </button>
           </div>
-          {avanslar.length === 0 ? (
-            <div className="rounded-[14px] bg-card p-[18px] text-center text-[13px] text-muted">
-              Henüz avans verilmedi.
-            </div>
-          ) : (
-            <div className="flex flex-col gap-2">
-              {avanslar.map((a) => (
-                <div
-                  key={a.id}
-                  className="flex items-center justify-between gap-3 rounded-[14px] bg-card px-[15px] py-[13px]"
-                >
-                  <div className="min-w-0">
-                    <div className="truncate text-sm font-semibold text-ink">
-                      {a.note || 'Avans'}
-                    </div>
-                    <div className="mt-[2px] text-xs text-muted">{formatRelativeDate(a.tarih)}</div>
-                  </div>
-                  <div className="shrink-0 text-[15px] font-bold text-danger">
-                    -{formatTL(numericStringToKurus(String(a.tutar)))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+          <OdemeList
+            items={avanslar}
+            empty="Henüz avans verilmedi."
+            fallback="Avans"
+            positive={false}
+          />
         </div>
 
         {/* Primler */}
@@ -479,30 +569,12 @@ export default function PersonelDetay() {
               <span className="text-[13px] font-semibold text-white">Prim Ver</span>
             </button>
           </div>
-          {primler.length === 0 ? (
-            <div className="rounded-[14px] bg-card p-[18px] text-center text-[13px] text-muted">
-              Henüz prim verilmedi.
-            </div>
-          ) : (
-            <div className="flex flex-col gap-2">
-              {primler.map((p) => (
-                <div
-                  key={p.id}
-                  className="flex items-center justify-between gap-3 rounded-[14px] bg-card px-[15px] py-[13px]"
-                >
-                  <div className="min-w-0">
-                    <div className="truncate text-sm font-semibold text-ink">
-                      {p.note || 'Prim'}
-                    </div>
-                    <div className="mt-[2px] text-xs text-muted">{formatRelativeDate(p.tarih)}</div>
-                  </div>
-                  <div className="shrink-0 text-[15px] font-bold text-success">
-                    +{formatTL(numericStringToKurus(String(p.tutar)))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+          <OdemeList
+            items={primler}
+            empty="Henüz prim verilmedi."
+            fallback="Prim"
+            positive
+          />
         </div>
 
         {/* Maaş geçmişi */}
@@ -518,28 +590,12 @@ export default function PersonelDetay() {
               Maaş Öde
             </button>
           </div>
-          {maaslar.length === 0 ? (
-            <div className="rounded-[14px] bg-card p-[18px] text-center text-[13px] text-muted">
-              Henüz maaş ödemesi yapılmadı.
-            </div>
-          ) : (
-            <div className="flex flex-col gap-2">
-              {maaslar.map((m) => (
-                <div
-                  key={m.id}
-                  className="flex items-center justify-between gap-3 rounded-[14px] bg-card px-[15px] py-[13px]"
-                >
-                  <div className="min-w-0">
-                    <div className="text-sm font-semibold text-ink">Maaş Ödemesi</div>
-                    <div className="mt-[2px] text-xs text-muted">{formatRelativeDate(m.tarih)}</div>
-                  </div>
-                  <div className="shrink-0 text-[15px] font-bold text-success">
-                    +{formatTL(numericStringToKurus(String(m.tutar)))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+          <OdemeList
+            items={maaslar}
+            empty="Henüz maaş ödemesi yapılmadı."
+            fallback="Maaş Ödemesi"
+            positive
+          />
         </div>
 
         {saveError && <p className="text-center text-sm text-danger">{saveError}</p>}
