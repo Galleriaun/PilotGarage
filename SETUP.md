@@ -32,6 +32,7 @@ Follow strictly in order: 1–2 backend, 3 deploy, 4 auth, 5 first Yönetici, 6 
 18. `018_bildirim_cop.sql` — notifications (trigger-generated: pending işlem, silme isteği, yeni üyelik) + trash (deleted items snapshot, newest 50 per business)
 19. `019_tekrar_otomatik.sql` — tekrar kuralları also skip Onay: the cron creates their monthly işlem born `ONAYLANDI` (cari-targeted rules unchanged)
 20. `020_kayit_saat.sql` — kayıt başlangıç/bitiş saati (30-min slots 09:00–21:00) + `pilotgarage-saat` cron (every 15 min) that auto-advances durum: start → AKTIF, end → TAMAMLANDI
+21. `021_push.sql` — Web Push subscription rows (one per device; own-rows RLS). Requires the **section 8** setup to actually deliver pushes.
 
 **After all migrations (recommended):** run `supabase/tests/rls_smoke_test.sql` —
 paste the whole file into the SQL editor and run once. It verifies RLS isolation
@@ -104,6 +105,31 @@ and **publishable** key (public-safe; RLS is the security boundary) from
 
 - **iPhone (Safari):** Share → *Ana Ekrana Ekle*
 - **Android (Chrome):** menu → *Uygulamayı yükle* (or the install banner)
+
+## 8. Anlık bildirimler (Web Push)
+
+Delivers notifications while the app is closed. Android/Chrome works directly;
+iPhone needs iOS 16.4+ **and** the app installed to the home screen.
+
+1. **VAPID keys** (once, locally): `npx web-push generate-vapid-keys`
+2. **GitHub secret:** add `VITE_VAPID_PUBLIC_KEY` (the public key) under
+   Settings → Secrets → Actions, then push/re-run the deploy so it's baked in.
+3. **SQL editor:** run `021_push.sql`.
+4. **Edge Function:** Dashboard → Edge Functions → Create → name `send-push`,
+   paste `supabase/functions/send-push/index.ts`, and **disable "Verify JWT"**
+   (the webhook authenticates with a secret header instead).
+5. **Function secrets** (Edge Functions → send-push → Secrets):
+   - `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` — from step 1
+   - `PUSH_WEBHOOK_SECRET` — any long random string
+6. **Database Webhook:** Dashboard → Database → Webhooks → Create:
+   table `notifications`, event **INSERT**, type HTTP Request (POST) → the
+   `send-push` function URL, with an HTTP header `x-push-secret` = the value
+   from step 5.
+7. **On each device:** open the app → Ayarlar → toggle **Anlık bildirimler** on
+   (on iPhone: install to home screen first, then toggle inside the installed app).
+
+Quick test: from a second account, create a Gelir/Gider — the finance users'
+subscribed devices should receive the push within seconds.
 
 ## Verify (Sprint 0 checklist)
 

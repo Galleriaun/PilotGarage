@@ -30,9 +30,9 @@ Vite 8.1 · React 19.2 · TypeScript 6.0 · Tailwind CSS 4.3 · React Router 8.1
 
 ---
 
-## Database — 20 migrations
+## Database — 21 migrations
 
-Run in order in the Supabase SQL editor. **1–7 applied as of 2026-07-08; 8–20 are new (Sprint 4) — run them.**
+Run in order in the Supabase SQL editor. **1–7 applied as of 2026-07-08; 8–21 are new (Sprint 4) — run them.**
 
 1. `001_schema.sql` — enums, tables, `v_kasa_ozet` view (balance is a **view over ONAYLANDI rows**, never stored)
 2. `002_functions.sql` — RLS helpers, triggers, all RPCs (Onay gate, roles, cron body)
@@ -54,6 +54,7 @@ Run in order in the Supabase SQL editor. **1–7 applied as of 2026-07-08; 8–2
 18. `018_bildirim_cop.sql` — `notifications` (rows created by triggers: BEKLIYOR işlem → finance, silme isteği → finance, new signup → Yönetici; own-rows RLS, mark-read column grant, `profiles.notif_prefs`) + `trash` (AFTER DELETE snapshot of kayıt/işletme/hareket/sabit gider/tekrar kuralı, capped at newest 50 per business, finance-only read; hareket cascade skipped when its işletme is the deleted item).
 19. `019_tekrar_otomatik.sql` — tekrar kuralları skip Onay like sabit giderler: cron materializes their monthly kasa işlemi born `ONAYLANDI` (approved once at setup); cari-targeted rules still born `YOK`.
 20. `020_kayit_saat.sql` — `kayitlar.baslangic_saati/bitis_saati` (optional 30-min slots, 09:00–21:00, DB check bitiş > başlangıç, column grants) + `run_saat_transitions()` on a **second cron** (`pilotgarage-saat`, every 15 min): BEKLENEN → AKTIF at start, BEKLENEN/AKTIF → TAMAMLANDI after end (fires the normal gelir trigger; never moves durum backwards).
+21. `021_push.sql` — `push_subscriptions` (own-rows RLS). Web Push pipeline: notifications INSERT → database webhook → `send-push` Edge Function (`supabase/functions/send-push/`, npm:web-push, VAPID, prunes dead endpoints, respects notif_prefs) → device. Client: `src/lib/push.ts` + Ayarlar "Anlık bildirimler" toggle; SW handlers in `public/push-sw.js` via workbox `importScripts`. Setup steps in SETUP.md §8 (VAPID keys, `VITE_VAPID_PUBLIC_KEY` GitHub secret, function secrets, webhook).
 
 **Required Supabase extensions:** `pgcrypto`, `pg_cron`.
 

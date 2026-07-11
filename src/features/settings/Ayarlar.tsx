@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { useAuth } from '../../app/providers/AuthProvider'
+import { disablePush, enablePush, getPushSubscription, pushSupported } from '../../lib/push'
 import { BackChevron } from '../auth/EyeIcon'
 import { useNotifPrefs, useSaveProfile, type NotifPrefs } from './api'
 
@@ -37,9 +38,15 @@ export default function Ayarlar() {
 
   const [name, setName] = useState(profile?.full_name ?? '')
   const [nameMsg, setNameMsg] = useState('')
-  const [perm, setPerm] = useState(
-    typeof Notification !== 'undefined' ? Notification.permission : 'unsupported',
-  )
+
+  const [pushOn, setPushOn] = useState(false)
+  const [pushBusy, setPushBusy] = useState(false)
+  const [pushMsg, setPushMsg] = useState('')
+  useEffect(() => {
+    if (pushSupported() && Notification.permission === 'granted') {
+      void getPushSubscription().then((sub) => setPushOn(Boolean(sub)))
+    }
+  }, [])
 
   async function onSaveName() {
     setNameMsg('')
@@ -60,9 +67,28 @@ export default function Ayarlar() {
     save.mutate({ profileId, notifPrefs: next })
   }
 
-  async function askPermission() {
-    if (typeof Notification === 'undefined') return
-    setPerm(await Notification.requestPermission())
+  async function togglePush() {
+    setPushBusy(true)
+    setPushMsg('')
+    try {
+      if (pushOn) {
+        await disablePush()
+        setPushOn(false)
+      } else {
+        const r = await enablePush(profileId)
+        if (r === 'ok') setPushOn(true)
+        else if (r === 'denied')
+          setPushMsg('Bildirim izni reddedildi — tarayıcı/site ayarlarından açabilirsiniz.')
+        else
+          setPushMsg(
+            "Bu cihaz desteklemiyor. iPhone'da önce uygulamayı ana ekrana ekleyin (iOS 16.4+).",
+          )
+      }
+    } catch {
+      setPushMsg('İşlem başarısız. Tekrar deneyin.')
+    } finally {
+      setPushBusy(false)
+    }
   }
 
   return (
@@ -118,29 +144,21 @@ export default function Ayarlar() {
             BİLDİRİMLER
           </div>
 
-          <div className="mb-4 flex items-center justify-between gap-3">
+          <div className="mb-1 flex items-center justify-between gap-3">
             <div className="min-w-0">
-              <div className="text-sm font-semibold text-ink">Cihaz bildirim izni</div>
+              <div className="text-sm font-semibold text-ink">Anlık bildirimler</div>
               <div className="mt-[2px] text-xs text-muted">
-                {perm === 'granted'
-                  ? 'İzin verildi'
-                  : perm === 'denied'
-                    ? 'Reddedildi — tarayıcı ayarlarından açabilirsiniz'
-                    : perm === 'unsupported'
-                      ? 'Bu cihaz desteklemiyor'
-                      : 'Henüz izin verilmedi'}
+                {pushOn
+                  ? 'Bu cihaza bildirim gönderilir'
+                  : 'Uygulama kapalıyken de bildirim alın'}
               </div>
             </div>
-            {perm === 'default' && (
-              <button
-                type="button"
-                onClick={() => void askPermission()}
-                className="shrink-0 cursor-pointer rounded-[10px] bg-ink px-3 py-[8px] text-[13px] font-semibold text-white"
-              >
-                İzin Ver
-              </button>
-            )}
+            <div style={{ opacity: pushBusy ? 0.5 : 1 }}>
+              <Toggle on={pushOn} onClick={() => !pushBusy && void togglePush()} />
+            </div>
           </div>
+          {pushMsg && <p className="mb-2 text-xs text-danger">{pushMsg}</p>}
+          <div className="mb-4" />
 
           <div className="flex flex-col gap-4">
             {PREF_ROWS.map((r) => (

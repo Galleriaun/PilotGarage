@@ -39,6 +39,8 @@ export default defineConfig({
         // runtimeCaching on purpose — finance data must never be stale).
         globPatterns: ['**/*.{js,css,html,woff2,png}'],
         navigateFallback: '/PilotGarage/index.html',
+        // Web Push handlers (public/push-sw.js) ride inside the generated SW
+        importScripts: ['push-sw.js'],
       },
     }),
   ],
