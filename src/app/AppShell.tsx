@@ -1,5 +1,4 @@
 import { Outlet, useLocation, useNavigate } from 'react-router'
-import AccountMenu from '../components/ui/AccountMenu'
 import { useAuth } from './providers/AuthProvider'
 import { useBusiness } from './providers/BusinessProvider'
 import { useBildirimler } from '../features/settings/api'
@@ -245,18 +244,19 @@ function PersonelNav() {
             Bildirimler
           </span>
         </button>
-        <AccountMenu side="top">
-          <button
-            type="button"
-            aria-label="Profil"
-            className="flex min-w-[52px] cursor-pointer flex-col items-center gap-[3px]"
+        <button
+          type="button"
+          onClick={() => void navigate('/ayarlar')}
+          className="flex min-w-[52px] cursor-pointer flex-col items-center gap-[3px]"
+        >
+          <UserIcon color={pathname.startsWith('/ayarlar') ? ACTIVE : INACTIVE} />
+          <span
+            className="text-[10px] font-semibold"
+            style={{ color: pathname.startsWith('/ayarlar') ? ACTIVE : INACTIVE }}
           >
-            <UserIcon color={INACTIVE} />
-            <span className="text-[10px] font-semibold" style={{ color: INACTIVE }}>
-              Profil
-            </span>
-          </button>
-        </AccountMenu>
+            Profil
+          </span>
+        </button>
       </div>
     </nav>
   )

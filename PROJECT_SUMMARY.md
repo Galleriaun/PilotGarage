@@ -30,9 +30,9 @@ Vite 8.1 · React 19.2 · TypeScript 6.0 · Tailwind CSS 4.3 · React Router 8.1
 
 ---
 
-## Database — 24 migrations
+## Database — 25 migrations
 
-Run in order in the Supabase SQL editor. **1–7 applied as of 2026-07-08; 8–24 are new (Sprint 4) — run them.**
+Run in order in the Supabase SQL editor. **1–7 applied as of 2026-07-08; 8–25 are new (Sprint 4) — run them.**
 
 1. `001_schema.sql` — enums, tables, `v_kasa_ozet` view (balance is a **view over ONAYLANDI rows**, never stored)
 2. `002_functions.sql` — RLS helpers, triggers, all RPCs (Onay gate, roles, cron body)
@@ -58,6 +58,7 @@ Run in order in the Supabase SQL editor. **1–7 applied as of 2026-07-08; 8–2
 22. `022_bildirim_yeni_kayit.sql` — `KAYIT` notification type: new kayıt → finance staff minus creator, link `/kayit/:id`; "Yeni kayıtlar" toggle in Ayarlar; push function pref map updated (redeploy `send-push` if already deployed).
 23. `023_havale.sql` — `HAVALE` added to the `odeme_yontemi` enum (+ approve-gate wording). Client: purple Havale chip, third selector option in Gelir/Gider Ekle + Onay, Havale bucket in all three Nakit/KK split bars.
 24. `024_islem_silme.sql` — **işlem deletion (owner decision — softens the immutability invariant)**: `delete_islem` RPC (finance) flags exactly one row via a transaction-local setting that the immutability guard honors on DELETE; no other delete path for decided rows exists. Cari işlem delete resets its hareket to `YOK`; row snapshotted to trash. UI: trash icon on Tüm İşlemler cards + ConfirmDialog.
+25. `025_kayit_bildirim_herkes.sql` — `notif_yeni_kayit` widened from finance-only to every active member of the business (Personel can see kayıts), still excluding the creator.
 
 **Required Supabase extensions:** `pgcrypto`, `pg_cron`.
 

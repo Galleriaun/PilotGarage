@@ -35,6 +35,9 @@ export default function Ayarlar() {
   const navigate = useNavigate()
   const { profile, signOut } = useAuth()
   const profileId = profile?.id ?? ''
+  // Personel only ever receives yeni-kayıt notifications — hide the rest
+  const prefRows =
+    profile?.role === 'PERSONEL' ? PREF_ROWS.filter((r) => r.key === 'kayit') : PREF_ROWS
   const { data: prefs = {} } = useNotifPrefs(profileId)
   const save = useSaveProfile()
 
@@ -183,7 +186,7 @@ export default function Ayarlar() {
           <div className="mb-4" />
 
           <div className="flex flex-col gap-4">
-            {PREF_ROWS.map((r) => (
+            {prefRows.map((r) => (
               <div key={r.key} className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <div className="text-sm font-semibold text-ink">{r.label}</div>

@@ -13,7 +13,7 @@ export default function UpdatePrompt() {
   if (!needRefresh) return null
 
   return (
-    <div className="fixed bottom-24 left-1/2 z-50 flex w-[calc(100%-48px)] max-w-[400px] -translate-x-1/2 items-center justify-between gap-3 rounded-[16px] bg-ink px-5 py-4 shadow-[0_20px_50px_rgba(0,0,0,0.25)]">
+    <div className="pointer-events-auto fixed bottom-24 left-1/2 z-[100] flex w-[calc(100%-48px)] max-w-[400px] -translate-x-1/2 items-center justify-between gap-3 rounded-[16px] bg-ink px-5 py-4 shadow-[0_20px_50px_rgba(0,0,0,0.25)] md:bottom-auto md:top-[72px]">
       <span className="text-sm font-medium text-white">Yeni sürüm hazır</span>
       <div className="flex items-center gap-4">
         <button
