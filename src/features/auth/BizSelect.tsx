@@ -63,17 +63,21 @@ function BusinessCard({ business, onSelect }: { business: Business; onSelect: ()
     <button
       type="button"
       onClick={onSelect}
-      className="pressable flex w-full cursor-pointer items-center justify-between rounded-[20px] bg-card px-6 py-16 text-left"
+      className="pressable flex w-full cursor-pointer items-center justify-between rounded-[20px] bg-card px-6 py-16 text-left md:flex-col md:justify-center md:gap-6 md:py-24 md:transition-shadow md:hover:shadow-[0_12px_32px_rgba(0,0,0,0.09)]"
     >
       <span
-        className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-[14px] ${
+        className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-[14px] md:h-20 md:w-20 md:rounded-[22px] ${
           isServis ? 'bg-ink' : 'bg-danger'
         }`}
       >
         {isServis ? <WrenchIcon /> : <TruckIcon />}
       </span>
-      <span className="text-[20px] font-bold tracking-[-0.3px] text-ink">{business.name}</span>
-      <ChevronRight />
+      <span className="text-[20px] font-bold tracking-[-0.3px] text-ink md:text-[24px]">
+        {business.name}
+      </span>
+      <span className="md:hidden">
+        <ChevronRight />
+      </span>
     </button>
   )
 }
@@ -90,13 +94,16 @@ export default function BizSelect() {
   }
 
   return (
-    <div className="mx-auto flex min-h-dvh w-full max-w-[480px] flex-col px-7 pb-10 screen-forward">
-      <div className="pt-11">
-        <h1 className="text-[28px] font-bold leading-[1.2] tracking-[-0.5px] text-ink">
+    <div className="mx-auto flex min-h-dvh w-full max-w-[480px] flex-col px-7 pb-10 screen-forward md:max-w-[960px]">
+      <div className="pt-11 md:pt-20 md:text-center">
+        <h1 className="text-[28px] font-bold leading-[1.2] tracking-[-0.5px] text-ink md:text-[32px]">
           İşletme Seç
         </h1>
+        <p className="hidden text-[15px] text-muted md:mt-2 md:block">
+          Çalışmak istediğiniz işletmeyi seçin
+        </p>
       </div>
-      <div className="flex flex-1 flex-col justify-center gap-[14px] pb-[60px] pt-12">
+      <div className="flex flex-1 flex-col justify-center gap-[14px] pb-[60px] pt-12 md:grid md:content-center md:grid-cols-2 md:gap-6">
         {businesses.length === 0 ? (
           <p className="text-center text-[15px] leading-relaxed text-muted">
             Henüz bir işletmeye erişiminiz yok. Yöneticinizin size işletme ataması gerekiyor.

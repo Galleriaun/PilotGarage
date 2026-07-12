@@ -217,7 +217,7 @@ export default function Yonetim() {
               )}
             </div>
             <div
-              className="mt-[10px] truncate whitespace-nowrap font-bold tracking-[-1px] text-white md:text-center"
+              className="mt-[10px] truncate whitespace-nowrap font-bold tracking-[-1px] text-white"
               style={{ fontSize: bakiyeLabel.length > 11 ? '26px' : '36px' }}
             >
               {bakiyeLabel}
