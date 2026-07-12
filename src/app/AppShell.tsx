@@ -155,7 +155,8 @@ function PlusFab({ size }: { size: number }) {
   )
 }
 
-const ACTIVE = '#111'
+// var() so the nav icons/labels follow the dark-mode ink token
+const ACTIVE = 'var(--color-ink)'
 const INACTIVE = '#ADADAD'
 
 /** Yönetici + Muhasebe nav: Kayıt | + | Yönetim (Yönetim wired in Sprint 2). */

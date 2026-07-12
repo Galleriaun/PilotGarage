@@ -118,19 +118,39 @@
 .dark .bg-ink svg {
   stroke: #111;
 }
-/* inline-styled chips: selected #111 / unselected #F2F2F2 / #fff / #FAFAFA */
+/* inline-styled chips: selected #111 flips to a light pill; the light grays
+   (#F2F2F2/#EEEEEE/#F7F7F7/#fff/#FAFAFA) flip to dark surfaces */
 .dark [style*='background: rgb(17, 17, 17)'] {
   background-color: #ececec !important;
   color: #111 !important;
 }
-.dark [style*='background: rgb(242, 242, 242)'] {
+.dark [style*='background: rgb(242, 242, 242)'],
+.dark [style*='background: rgb(238, 238, 238)'],
+.dark [style*='background: rgb(247, 247, 247)'],
+.dark [style*='background: rgb(250, 250, 250)'] {
   background-color: #26262b !important;
 }
 .dark [style*='background: rgb(255, 255, 255)'] {
   background-color: #202023 !important;
+  color: #ececec !important;
 }
-.dark [style*='background: rgb(250, 250, 250)'] {
-  background-color: #26262b !important;
+/* inline dark text/borders become light (e.g. selected month labels) */
+.dark [style*='color: rgb(17, 17, 17)'] {
+  color: #ececec !important;
+}
+.dark [style*='border-color: rgb(17, 17, 17)'] {
+  border-color: #ececec !important;
+}
+.dark [style*='border-color: rgb(226, 226, 226)'],
+.dark [style*='border-color: rgb(237, 237, 237)'],
+.dark [style*='border-color: rgb(242, 242, 242)'] {
+  border-color: #34343b !important;
+}
+/* desktop dark: cards get a subtle border like the light theme */
+@media (min-width: 768px) {
+  .dark .bg-card {
+    border: 1px solid #2c2c31;
+  }
 }
 
 /* iOS push/pop screen transitions (design README, Motion) */
