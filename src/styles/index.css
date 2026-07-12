@@ -58,6 +58,21 @@
   }
 }
 
+/* ── Desktop light theme (Monarch-style): warm gray canvas, white cards ──
+   Mobile keeps the white canvas + gray rows; dark mode is untouched. */
+@media (min-width: 768px) {
+  html:not(.dark) body {
+    background-color: #fafaf9;
+  }
+  html:not(.dark) .bg-card {
+    background-color: #fff;
+    border: 1px solid #eceae8;
+  }
+  html:not(.dark) .bg-field {
+    background-color: #edecea;
+  }
+}
+
 /* ── Dark mode — html.dark, toggled in Ayarlar ────────────────
    Token overrides do most of the work; the extra rules catch the
    hardcoded light hexes (arbitrary classes + inline chip styles). */

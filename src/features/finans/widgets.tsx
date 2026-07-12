@@ -50,7 +50,7 @@ export function CashFlowCard({
   const monthName = TR_MONTHS_FULL[selectedMonth - 1]
 
   return (
-    <div className="rounded-[18px] bg-white px-4 pb-4 pt-[18px] shadow-[0_1px_2px_rgba(0,0,0,0.03),0_4px_10px_rgba(0,0,0,0.04)]">
+    <div className="rounded-[18px] bg-white px-4 pb-4 pt-[18px] shadow-[0_1px_2px_rgba(0,0,0,0.03),0_4px_10px_rgba(0,0,0,0.04)] md:border md:border-[#E4E4E7]">
       <div className="mb-[14px] flex items-center justify-between">
         <span className="text-[13px] font-bold text-ink">Nakit Akışı</span>
         <button
@@ -62,7 +62,7 @@ export function CashFlowCard({
         </button>
       </div>
       <div className="overflow-x-auto">
-        <div className="min-w-full" style={{ width: 'max-content' }}>
+        <div className="w-max min-w-full md:w-full">
           <div className="flex h-[88px] items-center gap-[10px]">
             {months.map((m) => {
               const isSelected = m.month === selectedMonth
@@ -71,7 +71,7 @@ export function CashFlowCard({
                   key={m.month}
                   type="button"
                   onClick={() => onSelectMonth(m.month)}
-                  className="flex h-full w-[30px] shrink-0 cursor-pointer flex-col items-center justify-center gap-[2px]"
+                  className="flex h-full w-[30px] shrink-0 cursor-pointer flex-col items-center justify-center gap-[2px] md:w-auto md:flex-1"
                 >
                   <div
                     className="w-full max-w-[22px] rounded-t-[5px] rounded-b-[2px]"
@@ -97,7 +97,7 @@ export function CashFlowCard({
                 key={m.month}
                 type="button"
                 onClick={() => onSelectMonth(m.month)}
-                className="w-[30px] shrink-0 cursor-pointer text-center text-[10px] font-bold"
+                className="w-[30px] shrink-0 cursor-pointer text-center text-[10px] font-bold md:w-auto md:flex-1"
                 style={{ color: m.month === selectedMonth ? '#111' : '#ADADAD' }}
               >
                 {TR_MONTHS[m.month - 1]}
@@ -177,7 +177,7 @@ export function SpendingCard({
   }, [islemler, year, selectedMonth])
 
   return (
-    <div className="rounded-[18px] bg-white px-4 py-[18px] shadow-[0_1px_2px_rgba(0,0,0,0.03),0_4px_10px_rgba(0,0,0,0.04)]">
+    <div className="rounded-[18px] bg-white px-4 py-[18px] shadow-[0_1px_2px_rgba(0,0,0,0.03),0_4px_10px_rgba(0,0,0,0.04)] md:border md:border-[#E4E4E7]">
       <div className="mb-[2px] text-[13px] font-bold text-ink">Kategoriye Göre Harcama</div>
       <div className="mb-[14px] text-[11px] text-muted">
         {TR_MONTHS_FULL[selectedMonth - 1]} {year}
@@ -281,7 +281,7 @@ export function RecurringCard({
   }, [sabitGiderler, tekrarKurallari, maaslar])
 
   return (
-    <div className="rounded-[18px] bg-white px-4 py-[18px] shadow-[0_1px_2px_rgba(0,0,0,0.03),0_4px_10px_rgba(0,0,0,0.04)]">
+    <div className="rounded-[18px] bg-white px-4 py-[18px] shadow-[0_1px_2px_rgba(0,0,0,0.03),0_4px_10px_rgba(0,0,0,0.04)] md:border md:border-[#E4E4E7]">
       <div className="mb-[14px] text-[13px] font-bold text-ink">Sabit Ödemeler</div>
       {entries.length === 0 ? (
         <p className="py-4 text-center text-[13px] text-muted">Sabit ödeme bulunmuyor.</p>

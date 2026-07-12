@@ -3,8 +3,10 @@ import { supabase } from '../../lib/supabase'
 import { compressPhoto } from '../../lib/image'
 import type { Kayit, KayitDurum, KayitFields, Paket } from './types'
 
+// gelirler: RLS hides islemler from Personel — the embed just comes back
+// empty for them, which is fine (the Onay label is a finance-only feature).
 const KAYIT_SELECT =
-  '*, paket:paketler(id,name,price), fotograflar:kayit_fotograflar(id,kayit_id,storage_path,created_at), creator:profiles!kayitlar_created_by_fkey(full_name)'
+  '*, paket:paketler(id,name,price), fotograflar:kayit_fotograflar(id,kayit_id,storage_path,created_at), creator:profiles!kayitlar_created_by_fkey(full_name), gelirler:islemler(durum)'
 
 function sortFotograflar(kayit: Kayit): Kayit {
   return {

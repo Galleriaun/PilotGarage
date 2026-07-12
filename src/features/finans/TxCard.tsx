@@ -99,7 +99,7 @@ export default function TxCard({
     <div
       className={
         variant === 'white'
-          ? 'flex items-center gap-3 rounded-[16px] bg-white px-4 py-[14px] shadow-[0_1px_2px_rgba(0,0,0,0.03),0_4px_10px_rgba(0,0,0,0.04)]'
+          ? 'flex items-center gap-3 rounded-[16px] bg-white px-4 py-[14px] shadow-[0_1px_2px_rgba(0,0,0,0.03),0_4px_10px_rgba(0,0,0,0.04)] md:border md:border-[#E4E4E7]'
           : 'flex items-center gap-3 rounded-[16px] bg-card px-4 py-[14px]'
       }
     >

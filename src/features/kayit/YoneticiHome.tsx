@@ -29,7 +29,7 @@ function aracLabel(k: Kayit): string {
 const dotCls = 'h-[4px] w-[4px] shrink-0 rounded-full'
 
 /** Mockup's card meta rows: tarih • araç • paket chip / • creator • created. */
-export function KayitCardMeta({ k }: { k: Kayit }) {
+export function KayitCardMeta({ k, showPaket = true }: { k: Kayit; showPaket?: boolean }) {
   const arac = aracLabel(k)
   return (
     <>
@@ -46,7 +46,7 @@ export function KayitCardMeta({ k }: { k: Kayit }) {
             <span className="truncate">{arac}</span>
           </>
         )}
-        {k.paket && (
+        {showPaket && k.paket && (
           <span className="shrink-0 rounded-[6px] bg-[#E4E4E4] px-[7px] py-[2px] text-[10.5px] font-semibold text-[#555]">
             {k.paket.name}
           </span>
@@ -227,9 +227,25 @@ export default function YoneticiHome() {
                     <KayitThumb url={firstPath ? (photoUrls[firstPath] ?? null) : null} />
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-sm font-bold text-ink">{cardTitle(k)}</div>
-                      <KayitCardMeta k={k} />
+                      <KayitCardMeta k={k} showPaket={false} />
                     </div>
-                    <StatusPill durum={k.durum} />
+                    <div className="flex shrink-0 flex-col items-end gap-[5px]">
+                      <StatusPill durum={k.durum} />
+                      {k.gelirler.some((g) => g.durum === 'ONAYLANDI') ? (
+                        <span className="rounded-[6px] bg-success-soft px-2 py-[3px] text-[11px] font-semibold text-success">
+                          Onaylandı
+                        </span>
+                      ) : (
+                        <span className="rounded-[6px] bg-[#FEF9C3] px-2 py-[3px] text-[11px] font-semibold text-[#A16207]">
+                          Onaylanmadı
+                        </span>
+                      )}
+                      {k.paket && (
+                        <span className="rounded-[6px] bg-[#E4E4E4] px-2 py-[3px] text-[10.5px] font-semibold text-[#555]">
+                          {k.paket.name}
+                        </span>
+                      )}
+                    </div>
                   </button>
                 )
               })}

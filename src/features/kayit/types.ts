@@ -36,6 +36,8 @@ export interface Kayit {
   created_at: string
   paket: Paket | null
   fotograflar: KayitFoto[]
+  /** The kayıt's queued gelir(ler) — empty for Personel (islemler RLS). */
+  gelirler: { durum: 'BEKLIYOR' | 'ONAYLANDI' | 'REDDEDILDI' }[]
   /** NULL = deleted account. */
   creator: { full_name: string } | null
 }

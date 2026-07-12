@@ -1,4 +1,6 @@
+import { useRef, useState, type TouchEvent } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router'
+import { useQueryClient } from '@tanstack/react-query'
 import { useAuth } from './providers/AuthProvider'
 import { useBusiness } from './providers/BusinessProvider'
 import { useBildirimler } from '../features/settings/api'
@@ -285,7 +287,7 @@ function TopBar({ isPersonel }: { isPersonel: boolean }) {
     { to: '/ayarlar', label: 'Ayarlar', icon: GearNavIcon, active: pathname.startsWith('/ayarlar') },
   ]
   return (
-    <header className="hidden h-14 shrink-0 items-center bg-[#151515] px-6 md:flex">
+    <header className="hidden h-14 shrink-0 items-center bg-[#202024]/80 px-6 backdrop-blur-md md:absolute md:inset-x-0 md:top-0 md:z-30 md:flex">
       <div className="flex w-[220px] items-center gap-2">
         <span className="truncate text-[17px] font-bold tracking-[-0.3px] text-white">
           {activeBusiness?.name ?? 'PilotGarage'}
@@ -343,16 +345,77 @@ function TopBar({ isPersonel }: { isPersonel: boolean }) {
 export default function AppShell() {
   const { profile } = useAuth()
   const isPersonel = profile?.role === 'PERSONEL'
+
+  // Pull-to-refresh (mobile PWA has no browser refresh): pulling down from
+  // the top of the scroll area past the threshold refetches every query.
+  const queryClient = useQueryClient()
+  const mainRef = useRef<HTMLElement>(null)
+  const startY = useRef<number | null>(null)
+  const [pull, setPull] = useState(0)
+  const [refreshing, setRefreshing] = useState(false)
+
+  function onTouchStart(e: TouchEvent) {
+    startY.current =
+      (mainRef.current?.scrollTop ?? 1) <= 0 ? e.touches[0].clientY : null
+  }
+  function onTouchMove(e: TouchEvent) {
+    if (startY.current === null || refreshing) return
+    const dy = e.touches[0].clientY - startY.current
+    if (dy > 0 && (mainRef.current?.scrollTop ?? 1) <= 0) {
+      setPull(Math.min(100, dy * 0.45))
+    } else {
+      setPull(0)
+      startY.current = null
+    }
+  }
+  function onTouchEnd() {
+    startY.current = null
+    if (pull > 55 && !refreshing) {
+      setRefreshing(true)
+      setPull(52)
+      void queryClient.invalidateQueries().finally(() => {
+        setTimeout(() => {
+          setRefreshing(false)
+          setPull(0)
+        }, 350)
+      })
+    } else {
+      setPull(0)
+    }
+  }
+
   return (
     // Desktop: dark top navigation bar + full-width content below.
     // Mobile keeps the centered phone column + bottom nav.
-    <div className="flex h-dvh flex-col bg-white">
+    <div className="relative flex h-dvh flex-col bg-white md:bg-[#FAFAF9]">
       <TopBar isPersonel={isPersonel} />
-      <main className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain">
-        <div className="mx-auto w-full max-w-[480px] md:max-w-none md:px-10 md:pb-10 md:pt-2 xl:px-14">
-          <Outlet />
-        </div>
-      </main>
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        {(pull > 8 || refreshing) && (
+          <div className="pointer-events-none absolute left-1/2 top-3 z-10 -translate-x-1/2">
+            <div
+              className={`h-6 w-6 rounded-full border-[2.5px] border-divider border-t-ink ${
+                refreshing ? 'animate-spin' : ''
+              }`}
+              style={{ transform: refreshing ? undefined : `rotate(${pull * 3.4}deg)` }}
+            />
+          </div>
+        )}
+        <main
+          ref={mainRef}
+          onTouchStart={onTouchStart}
+          onTouchMove={onTouchMove}
+          onTouchEnd={onTouchEnd}
+          className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain"
+          style={{
+            transform: pull > 0 ? `translateY(${pull}px)` : undefined,
+            transition: startY.current === null ? 'transform 0.25s ease' : 'none',
+          }}
+        >
+          <div className="mx-auto w-full max-w-[480px] md:max-w-none md:px-10 md:pb-10 md:pt-16 xl:px-14">
+            <Outlet />
+          </div>
+        </main>
+      </div>
       <div className="shrink-0 md:hidden">
         {isPersonel ? <PersonelNav /> : <YoneticiNav />}
       </div>

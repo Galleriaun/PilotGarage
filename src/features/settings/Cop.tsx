@@ -94,7 +94,9 @@ export default function Cop() {
                     <span className="rounded-[6px] bg-[#EBEBEB] px-[7px] py-[2px] text-[10.5px] font-semibold text-[#555]">
                       {TYPE_LABELS[t.item_type] ?? t.item_type}
                     </span>
-                    {formatCreatedStamp(t.deleted_at)}
+                    <span className="truncate">
+                      {t.deleter?.full_name ?? '—'} • {formatCreatedStamp(t.deleted_at)}
+                    </span>
                   </div>
                 </div>
                 <button

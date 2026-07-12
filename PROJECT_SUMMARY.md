@@ -30,9 +30,9 @@ Vite 8.1 · React 19.2 · TypeScript 6.0 · Tailwind CSS 4.3 · React Router 8.1
 
 ---
 
-## Database — 26 migrations
+## Database — 27 migrations
 
-Run in order in the Supabase SQL editor. **1–7 applied as of 2026-07-08; 8–26 are new (Sprint 4) — run them.**
+Run in order in the Supabase SQL editor. **1–7 applied as of 2026-07-08; 8–27 are new (Sprint 4) — run them.**
 
 1. `001_schema.sql` — enums, tables, `v_kasa_ozet` view (balance is a **view over ONAYLANDI rows**, never stored)
 2. `002_functions.sql` — RLS helpers, triggers, all RPCs (Onay gate, roles, cron body)
@@ -60,6 +60,7 @@ Run in order in the Supabase SQL editor. **1–7 applied as of 2026-07-08; 8–2
 24. `024_islem_silme.sql` — **işlem deletion (owner decision — softens the immutability invariant)**: `delete_islem` RPC (finance) flags exactly one row via a transaction-local setting that the immutability guard honors on DELETE; no other delete path for decided rows exists. Cari işlem delete resets its hareket to `YOK`; row snapshotted to trash. UI: trash icon on Tüm İşlemler cards + ConfirmDialog.
 25. `025_kayit_bildirim_herkes.sql` — `notif_yeni_kayit` widened from finance-only to every active member of the business (Personel can see kayıts), still excluding the creator.
 26. `026_cop_geri_al.sql` — Çöp Kutusu geri al/sil: `restore_trash` RPC re-inserts the payload snapshot with the original id (`jsonb_populate_record`); a transaction-local `app.geri_al` flag silences the kayıt-geliri + notification insert triggers; dangling refs nulled (işlem/paket) or refused (hareket/kural with deleted işletme); restored cari işlem re-claims its hareket's kasa state. New `trash_delete` policy for permanent removal. UI: Geri al + Sil buttons w/ ConfirmDialog on `/yonetim/cop`.
+27. `027_trash_silen.sql` — `trash.deleted_by` gains an FK to profiles (`on delete set null`) so the Çöp Kutusu row shows "silen kişi • zaman" via a PostgREST embed.
 
 **Required Supabase extensions:** `pgcrypto`, `pg_cron`.
 

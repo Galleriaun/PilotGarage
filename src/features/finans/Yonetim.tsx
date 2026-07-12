@@ -187,7 +187,7 @@ export default function Yonetim() {
         <>
           {/* Toplam bakiye + Gelir/Gider — desktop: side by side */}
           <div className="md:grid md:grid-cols-3 md:items-stretch md:gap-4 md:px-6 md:pt-[18px]">
-          <div className="mx-6 mt-[18px] rounded-[24px] bg-[linear-gradient(150deg,#1C1C1E,#0A0A0A)] px-[22px] py-6 shadow-[0_12px_28px_rgba(0,0,0,0.18)] md:mx-0 md:mt-0">
+          <div className="mx-6 mt-[18px] rounded-[24px] bg-[linear-gradient(150deg,#1C1C1E,#0A0A0A)] px-[22px] py-6 shadow-[0_12px_28px_rgba(0,0,0,0.18)] md:col-span-2 md:mx-0 md:mt-0">
             <div className="flex items-center justify-between gap-2">
               <div className="shrink-0 text-xs font-semibold tracking-[0.4px] text-white/50">
                 TOPLAM BAKİYE
@@ -217,7 +217,7 @@ export default function Yonetim() {
               )}
             </div>
             <div
-              className="mt-[10px] truncate whitespace-nowrap font-bold tracking-[-1px] text-white"
+              className="mt-[10px] truncate whitespace-nowrap font-bold tracking-[-1px] text-white md:text-center"
               style={{ fontSize: bakiyeLabel.length > 11 ? '26px' : '36px' }}
             >
               {bakiyeLabel}
@@ -251,8 +251,8 @@ export default function Yonetim() {
           </div>
 
           {/* Gelir / Gider */}
-          {/* md:contents → Gelir and Gider become their own grid cells */}
-          <div className="flex gap-[10px] px-6 pt-[14px] md:contents">
+          {/* desktop: Gelir + Gider stacked in the third column */}
+          <div className="flex gap-[10px] px-6 pt-[14px] md:flex-col md:gap-4 md:p-0">
             {(
               [
                 { tur: 'GELIR', label: 'Gelir', amount: gelir, iconBg: '#F0FDF4' },
@@ -263,14 +263,14 @@ export default function Yonetim() {
               return (
                 <div
                   key={card.tur}
-                  className="flex-1 rounded-[18px] bg-white px-4 py-[15px] shadow-[0_1px_2px_rgba(0,0,0,0.03),0_4px_10px_rgba(0,0,0,0.04)] md:flex md:flex-col md:justify-center md:gap-2 md:border md:border-[#EFEFEF] md:px-6"
+                  className="flex-1 rounded-[18px] bg-white px-4 py-[15px] shadow-[0_1px_2px_rgba(0,0,0,0.03),0_4px_10px_rgba(0,0,0,0.04)] md:flex md:flex-row md:items-center md:justify-between md:gap-4 md:border md:border-[#E4E4E7] md:px-6"
                 >
                   <button
                     type="button"
                     onClick={() =>
                       goToIslemler({ tur: card.tur, takvim: PERIOD_QUERY[period] })
                     }
-                    className="flex w-full cursor-pointer items-center gap-[11px] text-left"
+                    className="flex w-full cursor-pointer items-center gap-[11px] text-left md:w-auto md:min-w-0 md:flex-1"
                   >
                     <div
                       className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[11px]"
@@ -295,7 +295,7 @@ export default function Yonetim() {
                   <button
                     type="button"
                     onClick={() => setAddTx(card.tur)}
-                    className="mx-auto mt-4 flex w-fit cursor-pointer items-center justify-center gap-[5px] rounded-[9px] bg-[#F5F5F5] px-3 py-[7px]"
+                    className="mx-auto mt-4 flex w-fit cursor-pointer items-center justify-center gap-[5px] rounded-[9px] bg-[#F5F5F5] px-3 py-[7px] md:mx-0 md:mt-0 md:shrink-0 md:px-4 md:py-[9px]"
                   >
                     <PlusMini />
                     <span className="text-xs font-semibold text-ink">
@@ -309,7 +309,7 @@ export default function Yonetim() {
           </div>
 
           {/* Dönem filtreleri */}
-          <div className="flex gap-2 px-6 pt-[14px]">
+          <div className="flex gap-2 px-6 pt-[14px] md:justify-center md:pt-8">
             {PERIODS.map((p) => {
               const selected = period === p
               return (
@@ -317,7 +317,7 @@ export default function Yonetim() {
                   key={p}
                   type="button"
                   onClick={() => setPeriod(p)}
-                  className="flex-1 cursor-pointer rounded-[12px] py-[9px] text-center text-[13px] font-semibold"
+                  className="flex-1 cursor-pointer rounded-[12px] py-[9px] text-center text-[13px] font-semibold md:flex-none md:px-8"
                   style={{
                     background: selected ? '#111' : '#F2F2F2',
                     color: selected ? '#fff' : '#888',
@@ -330,7 +330,7 @@ export default function Yonetim() {
           </div>
 
           {/* Son işlemler */}
-          <div className="flex items-center justify-between px-6 pt-[22px]">
+          <div className="flex items-center justify-between px-6 pt-[22px] md:pt-10">
             <span className="text-[15px] font-bold tracking-[-0.3px] text-ink">Son İşlemler</span>
             <button
               type="button"
@@ -340,7 +340,7 @@ export default function Yonetim() {
               Tümü
             </button>
           </div>
-          <div className="mx-6 mt-3 flex flex-col gap-[10px]">
+          <div className="mx-6 mt-3 flex flex-col gap-[10px] md:mt-4">
             {islemler.length === 0 ? (
               <p className="py-6 text-center text-[13px] text-muted">
                 Henüz onaylanmış işlem yok.
@@ -351,7 +351,7 @@ export default function Yonetim() {
           </div>
 
           {/* Raporlar carousel */}
-          <div className="pt-[22px]">
+          <div className="pt-[22px] md:pt-10">
             <div className="mb-[14px] px-6 text-[15px] font-bold tracking-[-0.3px] text-ink">
               Raporlar
             </div>

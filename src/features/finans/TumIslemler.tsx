@@ -159,6 +159,10 @@ export default function TumIslemler() {
     else if (i.odeme_yontemi === 'HAVALE') havaleNet += signed
   }
 
+  // kategori menu follows the tur filter (Gider -> only gider categories)
+  const shownKategoriler =
+    turFilter === 'TUMU' ? kategoriler : kategoriler.filter((k) => k.tur === turFilter)
+
   const kategoriLabel =
     kategoriFilter === 'TUMU'
       ? 'Tüm Kategoriler'
@@ -207,6 +211,9 @@ export default function TumIslemler() {
                     selected={turFilter === t}
                     onSelect={() => {
                       setTurFilter(t)
+                      // a kategori of the other tur can't match anymore
+                      const kept = kategoriler.find((k) => k.id === kategoriFilter)
+                      if (kept && t !== 'TUMU' && kept.tur !== t) setKategoriFilter('TUMU')
                       setOpenMenu(null)
                     }}
                   />
@@ -231,7 +238,7 @@ export default function TumIslemler() {
                     setOpenMenu(null)
                   }}
                 />
-                {kategoriler.map((k) => (
+                {shownKategoriler.map((k) => (
                   <MenuItem
                     key={k.id}
                     label={k.label}

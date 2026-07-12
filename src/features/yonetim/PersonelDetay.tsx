@@ -659,6 +659,44 @@ export default function PersonelDetay() {
                 )
               })}
             </div>
+            {/* Yönetici gets both businesses automatically */}
+            {current.role !== 'YONETICI' && (
+              <>
+                <div className="mb-2 mt-4 text-[11px] font-bold tracking-[0.6px] text-faint">
+                  İŞLETME ERİŞİMİ
+                </div>
+                <div className="flex gap-2">
+                  {businesses.map((b) => {
+                    const selected = current.businessIds.includes(b.id)
+                    return (
+                      <button
+                        key={b.id}
+                        type="button"
+                        onClick={() =>
+                          setDraft((d) => {
+                            const cur = d.businessIds ?? saved.businessIds
+                            return {
+                              ...d,
+                              businessIds: selected
+                                ? cur.filter((x) => x !== b.id)
+                                : [...cur, b.id],
+                            }
+                          })
+                        }
+                        className="flex-1 cursor-pointer rounded-[12px] border-[1.5px] py-[11px] text-center text-[13px] font-semibold"
+                        style={{
+                          background: selected ? '#111' : '#F2F2F2',
+                          borderColor: selected ? '#111' : '#F2F2F2',
+                          color: selected ? '#fff' : '#888',
+                        }}
+                      >
+                        {b.name}
+                      </button>
+                    )
+                  })}
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

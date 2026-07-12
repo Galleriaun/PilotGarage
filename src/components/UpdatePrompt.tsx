@@ -25,7 +25,13 @@ export default function UpdatePrompt() {
         </button>
         <button
           type="button"
-          onClick={() => void updateServiceWorker(true)}
+          onClick={() => {
+            // updateServiceWorker reloads via controllerchange; if the new SW
+            // can't activate (another open tab holds it), force the reload —
+            // a successful handoff reloads first and this timer dies with it.
+            setTimeout(() => window.location.reload(), 1500)
+            void updateServiceWorker(true)
+          }}
           className="cursor-pointer rounded-[10px] bg-white px-3 py-[6px] text-sm font-semibold text-ink"
         >
           Güncelle
