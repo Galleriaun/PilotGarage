@@ -37,6 +37,7 @@ Follow strictly in order: 1–2 backend, 3 deploy, 4 auth, 5 first Yönetici, 6 
 23. `023_havale.sql` — third ödeme yöntemi: Havale (enum value + approve gate wording)
 24. `024_islem_silme.sql` — finance can delete an işlem via `delete_islem` RPC (kasa recalculates; cari hareket released to YOK; row lands in the trash)
 25. `025_kayit_bildirim_herkes.sql` — the yeni-kayıt notification goes to all active staff of the business (Personel included), minus the creator
+26. `026_cop_geri_al.sql` — Çöp Kutusu: `restore_trash` RPC re-inserts the snapshot (insert triggers stay quiet — no duplicate gelir/notifications) + finance can permanently delete trash rows
 
 **After all migrations (recommended):** run `supabase/tests/rls_smoke_test.sql` —
 paste the whole file into the SQL editor and run once. It verifies RLS isolation

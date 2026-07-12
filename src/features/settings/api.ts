@@ -101,6 +101,33 @@ export function useSaveProfile() {
   })
 }
 
+/** Restore invalidates broadly — the item can be any entity type. */
+export function useRestoreTrash() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id }: { id: string }) => {
+      const { error } = await supabase.rpc('restore_trash', { p_id: id })
+      if (error) throw error
+    },
+    onSuccess: () => {
+      for (const key of ['trash', 'kayitlar', 'islemler', 'cari', 'cari-detail', 'sabit-giderler', 'tekrar-kurallari']) {
+        void queryClient.invalidateQueries({ queryKey: [key] })
+      }
+    },
+  })
+}
+
+export function useDeleteTrash() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id }: { id: string }) => {
+      const { error } = await supabase.from('trash').delete().eq('id', id)
+      if (error) throw error
+    },
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['trash'] }),
+  })
+}
+
 export function useTrashItems(businessId: string) {
   return useQuery({
     queryKey: ['trash', businessId],
