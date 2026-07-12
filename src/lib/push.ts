@@ -26,10 +26,9 @@ export async function getPushSubscription(): Promise<PushSubscription | null> {
   return reg.pushManager.getSubscription()
 }
 
-/** Ask permission, subscribe this device and save the subscription row. */
-export async function enablePush(
-  profileId: string,
-): Promise<'ok' | 'denied' | 'unsupported'> {
+/** Ask permission, subscribe this device and save the subscription row
+ *  (the RPC binds the endpoint to whoever is signed in). */
+export async function enablePush(): Promise<'ok' | 'denied' | 'unsupported'> {
   if (!pushSupported()) return 'unsupported'
   const perm = await Notification.requestPermission()
   if (perm !== 'granted') return 'denied'
@@ -41,15 +40,13 @@ export async function enablePush(
       applicationServerKey: urlBase64ToUint8Array(PUBLIC_KEY as string),
     }))
   const json = sub.toJSON()
-  const { error } = await supabase.from('push_subscriptions').upsert(
-    {
-      endpoint: sub.endpoint,
-      profile_id: profileId,
-      p256dh: json.keys?.p256dh ?? '',
-      auth: json.keys?.auth ?? '',
-    },
-    { onConflict: 'endpoint' },
-  )
+  // RPC instead of upsert: reassigns the endpoint if another account on
+  // this device registered it before (own-rows RLS would refuse the upsert)
+  const { error } = await supabase.rpc('save_push_subscription', {
+    p_endpoint: sub.endpoint,
+    p_p256dh: json.keys?.p256dh ?? '',
+    p_auth: json.keys?.auth ?? '',
+  })
   if (error) throw error
   return 'ok'
 }

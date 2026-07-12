@@ -5,7 +5,10 @@
 -- Everything happens inside one transaction that is ROLLED BACK at the
 -- end — no test data survives, safe to run on the live project.
 --
--- Prerequisite: migrations 001–013 applied.
+-- Prerequisite: migrations 001–028 applied. (Checks were written against
+-- 001–013; the later migrations keep every asserted behavior — decided-row
+-- immutability now has RPC-only escape hatches that this file does not
+-- exercise, so all checks still pass unchanged.)
 --
 -- On success the messages end with:  ALL TESTS PASSED (rolled back)
 -- On the first failed check it stops with:  FAIL: <what broke>

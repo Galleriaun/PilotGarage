@@ -81,7 +81,7 @@ export default function Ayarlar() {
         await disablePush()
         setPushOn(false)
       } else {
-        const r = await enablePush(profileId)
+        const r = await enablePush()
         if (r === 'ok') setPushOn(true)
         else if (r === 'denied')
           setPushMsg('Bildirim izni reddedildi — tarayıcı/site ayarlarından açabilirsiniz.')
