@@ -36,6 +36,9 @@ const IsletmeAyarlari = lazy(() => import('./features/yonetim/IsletmeAyarlari'))
 const Bildirimler = lazy(() => import('./features/settings/Bildirimler'))
 const Ayarlar = lazy(() => import('./features/settings/Ayarlar'))
 const Cop = lazy(() => import('./features/settings/Cop'))
+const Mesai = lazy(() => import('./features/mesai/Mesai'))
+const MesaiKayitlari = lazy(() => import('./features/mesai/MesaiKayitlari'))
+const MesaiPersonelDetay = lazy(() => import('./features/mesai/MesaiPersonelDetay'))
 
 export default function App() {
   return (
@@ -60,6 +63,7 @@ export default function App() {
                   <Route path="/kayit/:id" element={<KayitDetay />} />
                   <Route path="/bildirimler" element={<Bildirimler />} />
                   <Route path="/ayarlar" element={<Ayarlar />} />
+                  <Route path="/mesai" element={<Mesai />} />
                   <Route element={<RequireRole roles={['YONETICI', 'MUHASEBE']} />}>
                     <Route path="/yonetici" element={<YoneticiHome />} />
                     <Route path="/yonetim" element={<Yonetim />} />
@@ -73,6 +77,8 @@ export default function App() {
                     <Route path="/yonetim/sabit-giderler" element={<SabitGiderler />} />
                     <Route path="/yonetim/ayarlar" element={<IsletmeAyarlari />} />
                     <Route path="/yonetim/cop" element={<Cop />} />
+                    <Route path="/yonetim/mesai" element={<MesaiKayitlari />} />
+                    <Route path="/yonetim/mesai/:personelId" element={<MesaiPersonelDetay />} />
                   </Route>
                 </Route>
               </Route>

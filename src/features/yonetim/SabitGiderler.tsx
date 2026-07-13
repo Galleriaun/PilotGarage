@@ -105,7 +105,7 @@ function KategoriDropdown({
                   setOpen(false)
                 }}
                 className="flex w-full cursor-pointer items-center justify-between gap-4 rounded-[10px] px-3 py-[11px] text-left text-[15px] font-semibold text-ink"
-                style={{ background: selected ? '#F2F2F2' : 'transparent' }}
+                style={{ background: selected ? 'var(--seg)' : 'transparent' }}
               >
                 {o.label}
               </button>

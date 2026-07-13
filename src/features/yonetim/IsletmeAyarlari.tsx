@@ -9,6 +9,7 @@ import {
   useUpdateBusinessName,
 } from './api'
 import { GearSmIcon, ScreenHeader } from './shared'
+import MesaiKonumSection from '../mesai/MesaiKonumSection'
 
 function KategoriSection({
   title,
@@ -185,6 +186,8 @@ export default function IsletmeAyarlari() {
           kategoriler={gider}
           onRequestDelete={setDeleting}
         />
+
+        <MesaiKonumSection businessId={businessId} />
       </div>
       <div className="h-10" />
 

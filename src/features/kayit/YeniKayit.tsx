@@ -327,7 +327,7 @@ export default function YeniKayit() {
                     style={{
                       background: selected ? seg.bg : '#EEEEEE',
                       borderColor: selected ? seg.border : '#E2E2E2',
-                      color: selected ? '#fff' : '#888',
+                      color: selected ? 'var(--seg-fg-on)' : 'var(--seg-fg)',
                     }}
                   >
                     {DURUM_META[d].label}

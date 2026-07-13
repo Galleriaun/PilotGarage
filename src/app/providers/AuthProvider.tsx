@@ -7,6 +7,7 @@ import {
   type ReactNode,
 } from 'react'
 import type { Session } from '@supabase/supabase-js'
+import { safeStorage } from '../../lib/storage'
 import { supabase } from '../../lib/supabase'
 import type { Profile } from '../../lib/types'
 
@@ -68,7 +69,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [session, loadProfile])
 
   const signOut = useCallback(async () => {
-    localStorage.removeItem('pg.activeBusiness')
+    safeStorage.removeItem('pg.activeBusiness')
     await supabase.auth.signOut()
   }, [])
 

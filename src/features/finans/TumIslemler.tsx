@@ -92,7 +92,7 @@ function MenuItem({
       type="button"
       onClick={onSelect}
       className="flex w-full cursor-pointer items-center justify-between gap-4 whitespace-nowrap rounded-[10px] px-3 py-[10px] text-left text-[13px] font-semibold text-ink"
-      style={{ background: selected ? '#F2F2F2' : 'transparent' }}
+      style={{ background: selected ? 'var(--seg)' : 'transparent' }}
     >
       <span>{label}</span>
       {selected && <CheckSmallIcon />}

@@ -40,6 +40,8 @@ Follow strictly in order: 1–2 backend, 3 deploy, 4 auth, 5 first Yönetici, 6 
 26. `026_cop_geri_al.sql` — Çöp Kutusu: `restore_trash` RPC re-inserts the snapshot (insert triggers stay quiet — no duplicate gelir/notifications) + finance can permanently delete trash rows
 27. `027_trash_silen.sql` — FK on `trash.deleted_by` so the Çöp Kutusu can show who deleted each item
 28. `028_gozden_gecirme.sql` — audit fixes: push subscription follows the signed-in account on a shared device (`save_push_subscription` RPC); kayitlar INSERT scoped to form columns
+29. `029_mesai.sql` — Mesai (giriş/çıkış): business location/radius/static-IP config on `businesses`; `mesai_kayitlari` table; server-side check-in RPC (`mesai_giris_cikis` reads caller IP from request headers, matches static IP or Haversine distance). Configure the location per business in **İşletme Ayarları → Mesai** before staff can check in.
+30. `030_mesai_duzeltme.sql` — Mesai corrections for finance (Yönetici + Muhasebe): `mesai_manuel_ekle` / `mesai_kayit_guncelle` / `mesai_kayit_sil` RPCs (all `is_finance`-guarded; personel still have no direct write path). Deletes snapshot to the trash and restore via `restore_trash` (adds the `MESAI` branch + a `trash_capture_mesai` trigger); adds the `MANUEL` value to `mesai_kaynak`.
 
 **After all migrations (recommended):** run `supabase/tests/rls_smoke_test.sql` —
 paste the whole file into the SQL editor and run once. It verifies RLS isolation

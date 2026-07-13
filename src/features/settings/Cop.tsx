@@ -14,6 +14,7 @@ const TYPE_LABELS: Record<string, string> = {
   HAREKET: 'Hareket',
   SABIT_GIDER: 'Sabit Gider',
   TEKRAR: 'Tekrarlanan İşlem',
+  MESAI: 'Mesai Kaydı',
 }
 
 export default function Cop() {

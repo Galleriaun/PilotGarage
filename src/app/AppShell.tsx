@@ -166,7 +166,7 @@ function YoneticiNav() {
   const onKayit = pathname.startsWith('/yonetici') || pathname.startsWith('/kayit')
   const onYonetim = pathname.startsWith('/yonetim')
   return (
-    <nav className="shrink-0 border-t border-divider bg-white px-2 pb-[max(6px,env(safe-area-inset-bottom))] pt-[10px]">
+    <nav className="shrink-0 border-t border-divider bg-white px-2 pb-[max(20px,env(safe-area-inset-bottom))] pt-[12px]">
       <div className="flex items-center">
         <button
           type="button"
@@ -213,7 +213,7 @@ function PersonelNav() {
   const { pathname } = useLocation()
   const onHome = pathname.startsWith('/personel')
   return (
-    <nav className="shrink-0 border-t border-divider bg-white px-2 pb-[max(6px,env(safe-area-inset-bottom))] pt-[10px]">
+    <nav className="shrink-0 border-t border-divider bg-white px-2 pb-[max(20px,env(safe-area-inset-bottom))] pt-[12px]">
       <div className="flex items-center justify-around">
         <button
           type="button"
@@ -235,17 +235,6 @@ function PersonelNav() {
           className="-mt-[14px] cursor-pointer"
         >
           <PlusFab size={48} />
-        </button>
-        <button
-          type="button"
-          aria-label="Bildirimler"
-          onClick={() => void navigate('/bildirimler')}
-          className="flex min-w-[52px] cursor-pointer flex-col items-center gap-[3px]"
-        >
-          <BellIcon color={INACTIVE} />
-          <span className="text-[10px] font-semibold" style={{ color: INACTIVE }}>
-            Bildirimler
-          </span>
         </button>
         <button
           type="button"

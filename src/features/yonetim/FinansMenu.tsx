@@ -9,6 +9,15 @@ import {
   UsersIcon,
 } from './shared'
 
+function ClockIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2A5BD7" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="9" />
+      <polyline points="12 7 12 12 15 14" />
+    </svg>
+  )
+}
+
 const ITEMS = [
   {
     path: '/yonetim/paketler',
@@ -39,6 +48,13 @@ const ITEMS = [
     icon: <CalendarBoxIcon />,
   },
   {
+    path: '/yonetim/mesai',
+    title: 'Mesai Kayıtları',
+    subtitle: 'Personel giriş/çıkış saatleri',
+    iconBg: '#EEF4FF',
+    icon: <ClockIcon />,
+  },
+  {
     path: '/yonetim/ayarlar',
     title: 'İşletme Ayarları',
     subtitle: 'İsim ve kategoriler',
@@ -55,11 +71,11 @@ export default function FinansMenu() {
       <DropdownMenu.Trigger asChild>
         <button
           type="button"
-          className="flex shrink-0 cursor-pointer items-center gap-[6px] rounded-[20px] bg-field py-[9px] pl-[10px] pr-3"
+          className="flex shrink-0 cursor-pointer items-center gap-[6px] rounded-[20px] bg-field py-[9px] pl-[10px] pr-3 text-ink"
         >
-          <GearSmIcon color="#111" size={15} />
+          <GearSmIcon color="currentColor" size={15} />
           <span className="text-[13px] font-semibold text-ink">Yönetim</span>
-          <ChevronDownIcon size={11} color="#111" rotated={false} />
+          <ChevronDownIcon size={11} color="currentColor" rotated={false} />
         </button>
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>

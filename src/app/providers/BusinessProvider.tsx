@@ -7,6 +7,7 @@ import {
   type ReactNode,
 } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { safeStorage } from '../../lib/storage'
 import { supabase } from '../../lib/supabase'
 import type { Business } from '../../lib/types'
 import { useAuth } from './AuthProvider'
@@ -42,11 +43,11 @@ export function BusinessProvider({ children }: { children: ReactNode }) {
   })
 
   const [activeId, setActiveId] = useState<string | null>(() =>
-    localStorage.getItem(STORAGE_KEY),
+    safeStorage.getItem(STORAGE_KEY),
   )
 
   const selectBusiness = useCallback((id: string) => {
-    localStorage.setItem(STORAGE_KEY, id)
+    safeStorage.setItem(STORAGE_KEY, id)
     setActiveId(id)
   }, [])
 
@@ -55,7 +56,7 @@ export function BusinessProvider({ children }: { children: ReactNode }) {
   // persisted selection on every app launch (İşletme Seç on each open).
   useEffect(() => {
     if (!loading && !session) {
-      localStorage.removeItem(STORAGE_KEY)
+      safeStorage.removeItem(STORAGE_KEY)
       setActiveId(null)
     }
   }, [loading, session])

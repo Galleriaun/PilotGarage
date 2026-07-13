@@ -77,11 +77,12 @@ function ArrowDownMini({ color }: { color: string }) {
 function PlusMini() {
   return (
     <svg
+      className="text-ink"
       width="11"
       height="11"
       viewBox="0 0 24 24"
       fill="none"
-      stroke="#111"
+      stroke="currentColor"
       strokeWidth="2.8"
       strokeLinecap="round"
     >
@@ -319,8 +320,8 @@ export default function Yonetim() {
                   onClick={() => setPeriod(p)}
                   className="flex-1 cursor-pointer rounded-[12px] py-[9px] text-center text-[13px] font-semibold md:flex-none md:px-8"
                   style={{
-                    background: selected ? '#111' : '#F2F2F2',
-                    color: selected ? '#fff' : '#888',
+                    background: selected ? 'var(--seg-on)' : 'var(--seg)',
+                    color: selected ? 'var(--seg-fg-on)' : 'var(--seg-fg)',
                   }}
                 >
                   {PERIOD_LABELS[p]}

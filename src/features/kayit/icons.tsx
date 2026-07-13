@@ -63,11 +63,12 @@ export function PlusSmallIcon() {
 export function SwapIcon({ size = 16 }: { size?: number }) {
   return (
     <svg
+      className="text-ink"
       width={size}
       height={size}
       viewBox="0 0 24 24"
       fill="none"
-      stroke="#111"
+      stroke="currentColor"
       strokeWidth="2.2"
       strokeLinecap="round"
     >
@@ -82,11 +83,12 @@ export function SwapIcon({ size = 16 }: { size?: number }) {
 export function BellOutlineIcon() {
   return (
     <svg
+      className="text-ink"
       width="20"
       height="20"
       viewBox="0 0 24 24"
       fill="none"
-      stroke="#111"
+      stroke="currentColor"
       strokeWidth="2.2"
       strokeLinecap="round"
     >
@@ -99,11 +101,12 @@ export function BellOutlineIcon() {
 export function GearIcon() {
   return (
     <svg
+      className="text-ink"
       width="20"
       height="20"
       viewBox="0 0 24 24"
       fill="none"
-      stroke="#111"
+      stroke="currentColor"
       strokeWidth="2.2"
       strokeLinecap="round"
       strokeLinejoin="round"
@@ -213,11 +216,12 @@ export function PlusDashedIcon({ color = '#9A9A9A' }: { color?: string }) {
 export function CheckSmallIcon({ size = 14 }: { size?: number }) {
   return (
     <svg
+      className="text-ink"
       width={size}
       height={size}
       viewBox="0 0 24 24"
       fill="none"
-      stroke="#111"
+      stroke="currentColor"
       strokeWidth="2.8"
       strokeLinecap="round"
       strokeLinejoin="round"
@@ -227,9 +231,10 @@ export function CheckSmallIcon({ size = 14 }: { size?: number }) {
   )
 }
 
-export function CalendarIcon({ color = '#111', size = 14 }: { color?: string; size?: number }) {
+export function CalendarIcon({ color = 'currentColor', size = 14 }: { color?: string; size?: number }) {
   return (
     <svg
+      className="text-ink"
       width={size}
       height={size}
       viewBox="0 0 24 24"

@@ -1,11 +1,12 @@
 export function EyeIcon() {
   return (
     <svg
+      className="text-ink"
       width="20"
       height="20"
       viewBox="0 0 24 24"
       fill="none"
-      stroke="#111"
+      stroke="currentColor"
       strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"
@@ -19,11 +20,12 @@ export function EyeIcon() {
 export function BackChevron() {
   return (
     <svg
+      className="text-ink"
       width="20"
       height="20"
       viewBox="0 0 24 24"
       fill="none"
-      stroke="#111"
+      stroke="currentColor"
       strokeWidth="2.2"
       strokeLinecap="round"
       strokeLinejoin="round"

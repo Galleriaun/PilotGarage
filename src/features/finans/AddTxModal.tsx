@@ -14,11 +14,12 @@ const inputCls =
 function CheckIcon() {
   return (
     <svg
+      className="text-ink"
       width="14"
       height="14"
       viewBox="0 0 24 24"
       fill="none"
-      stroke="#111"
+      stroke="currentColor"
       strokeWidth="2.8"
       strokeLinecap="round"
       strokeLinejoin="round"
@@ -167,7 +168,7 @@ export default function AddTxModal({ open, tur, businessId, onClose }: AddTxModa
                               setKategoriOpen(false)
                             }}
                             className="flex w-full cursor-pointer items-center justify-between gap-4 rounded-[10px] px-3 py-[10px] text-left text-sm font-semibold text-ink"
-                            style={{ background: selected ? '#F2F2F2' : 'transparent' }}
+                            style={{ background: selected ? 'var(--seg)' : 'transparent' }}
                           >
                             <span>{k.label}</span>
                             {selected && <CheckIcon />}
@@ -191,9 +192,9 @@ export default function AddTxModal({ open, tur, businessId, onClose }: AddTxModa
                         onClick={() => setOdemeYontemi(y)}
                         className="flex-1 cursor-pointer rounded-[12px] border-[1.5px] py-[11px] text-center text-[13px] font-semibold"
                         style={{
-                          background: selected ? '#111' : '#F2F2F2',
-                          borderColor: selected ? '#111' : '#F2F2F2',
-                          color: selected ? '#fff' : '#888',
+                          background: selected ? 'var(--seg-on)' : 'var(--seg)',
+                          borderColor: selected ? 'var(--seg-on)' : 'var(--seg)',
+                          color: selected ? 'var(--seg-fg-on)' : 'var(--seg-fg)',
                         }}
                       >
                         {ODEME_YONTEMI_LABELS[y]}

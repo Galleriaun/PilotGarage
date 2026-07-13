@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router'
+import { useEffect, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { useBusiness } from '../../app/providers/BusinessProvider'
 import { formatTL, numericStringToKurus, parseTLToKurus } from '../../lib/money'
@@ -107,7 +107,7 @@ function ApproveSignupModal({
                 className="flex cursor-pointer items-center gap-3 rounded-[14px] border-[1.5px] px-4 py-3 text-left"
                 style={{
                   background: selected ? '#FAFAFA' : '#fff',
-                  borderColor: selected ? '#111' : '#EDEDED',
+                  borderColor: selected ? 'var(--seg-on)' : 'var(--color-divider)',
                 }}
               >
                 <div className="min-w-0 flex-1">
@@ -141,9 +141,9 @@ function ApproveSignupModal({
                     onClick={() => toggleBusiness(b.id)}
                     className="flex-1 cursor-pointer rounded-[12px] border-[1.5px] py-[11px] text-center text-[13px] font-semibold"
                     style={{
-                      background: selected ? '#111' : '#F2F2F2',
-                      borderColor: selected ? '#111' : '#F2F2F2',
-                      color: selected ? '#fff' : '#888',
+                      background: selected ? 'var(--seg-on)' : 'var(--seg)',
+                      borderColor: selected ? 'var(--seg-on)' : 'var(--seg)',
+                      color: selected ? 'var(--seg-fg-on)' : 'var(--seg-fg)',
                     }}
                   >
                     {b.name}
@@ -184,9 +184,28 @@ export default function PersonelList() {
   const { data: pendingProfiles = [] } = usePendingProfiles(isYonetici)
   const [approving, setApproving] = useState<Profile | null>(null)
 
+  // "Personel X işletmesine taşındı" — set when İşletme Erişimi removed this
+  // business (PersonelDetay navigates here with the destination name)
+  const location = useLocation()
+  const movedTo = (location.state as { movedTo?: string } | null)?.movedTo
+  const [toast, setToast] = useState<string | null>(
+    movedTo ? `Personel ${movedTo} işletmesine taşındı.` : null,
+  )
+  useEffect(() => {
+    if (!toast) return
+    const t = setTimeout(() => setToast(null), 4000)
+    return () => clearTimeout(t)
+  }, [toast])
+
   return (
     <div className="screen-forward">
       <ScreenHeader title="Personel" icon={<UsersIcon />} iconBg="#F0FDF4" backTo="/yonetim" />
+
+      {toast && (
+        <div className="menu-in mx-6 mb-4 rounded-[14px] bg-success-soft px-4 py-3 text-center text-[13px] font-semibold text-success">
+          {toast}
+        </div>
+      )}
 
       {/* Onay bekleyen kayıtlar — Yönetici only */}
       {isYonetici && pendingProfiles.length > 0 && (

@@ -40,10 +40,10 @@ function PlusInkIcon() {
       height="14"
       viewBox="0 0 24 24"
       fill="none"
-      stroke="#111"
+      stroke="currentColor"
       strokeWidth="2.8"
       strokeLinecap="round"
-      className="shrink-0"
+      className="shrink-0 text-ink"
     >
       <line x1="12" y1="5" x2="12" y2="19" />
       <line x1="5" y1="12" x2="19" y2="12" />
@@ -355,7 +355,7 @@ export default function IsletmeDetay() {
                   onClick={() => setYansitilmamis(f.yok)}
                   className="cursor-pointer whitespace-nowrap rounded-[20px] px-[14px] py-2 text-[13px] font-semibold"
                   style={{
-                    background: selected ? '#111' : '#F2F2F2',
+                    background: selected ? 'var(--seg-on)' : 'var(--seg)',
                     color: selected ? '#fff' : '#888',
                   }}
                 >
@@ -371,8 +371,8 @@ export default function IsletmeDetay() {
               aria-label="Tarih aralığı seç"
               className="flex cursor-pointer items-center gap-[5px] whitespace-nowrap rounded-[20px] px-3 py-2 text-[13px] font-semibold"
               style={{
-                background: range ? '#111' : '#F2F2F2',
-                color: range ? '#fff' : '#888',
+                background: range ? 'var(--seg-on)' : 'var(--seg)',
+                color: range ? 'var(--seg-fg-on)' : 'var(--seg-fg)',
               }}
             >
               <CalendarIcon size={14} color={range ? '#fff' : '#888'} />

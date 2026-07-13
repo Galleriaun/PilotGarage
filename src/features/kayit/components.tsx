@@ -60,7 +60,7 @@ export function SaatDropdown({
               setOpen(false)
             }}
             className="w-full cursor-pointer rounded-[10px] px-3 py-[10px] text-left text-[14px] font-semibold text-ink"
-            style={{ background: value === null ? '#F2F2F2' : 'transparent' }}
+            style={{ background: value === null ? 'var(--seg)' : 'transparent' }}
           >
             Yok
           </button>
@@ -75,7 +75,7 @@ export function SaatDropdown({
                   setOpen(false)
                 }}
                 className="w-full cursor-pointer rounded-[10px] px-3 py-[10px] text-left text-[14px] font-semibold text-ink"
-                style={{ background: selected ? '#F2F2F2' : 'transparent' }}
+                style={{ background: selected ? 'var(--seg)' : 'transparent' }}
               >
                 {saatLabel(t)}
               </button>
@@ -194,7 +194,7 @@ export function PaketDropdown({
   const [open, setOpen] = useState(false)
   const selected = paketler.find((p) => p.id === selectedId) ?? null
   const label = selected ? paketFullLabel(selected) : 'Paket seç'
-  const labelColor = selected ? '#111' : '#ADADAD'
+  const labelColor = selected ? 'var(--color-ink)' : '#ADADAD'
 
   const trigger =
     variant === 'form' ? (

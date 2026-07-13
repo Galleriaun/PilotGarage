@@ -179,8 +179,8 @@ export default function YoneticiHome() {
               onClick={() => setFilter(f.key)}
               className="cursor-pointer whitespace-nowrap rounded-[20px] px-[14px] py-2 text-[13px] font-semibold"
               style={{
-                background: selected ? '#111' : '#F2F2F2',
-                color: selected ? '#fff' : '#888',
+                background: selected ? 'var(--seg-on)' : 'var(--seg)',
+                color: selected ? 'var(--seg-fg-on)' : 'var(--seg-fg)',
               }}
             >
               {f.label}

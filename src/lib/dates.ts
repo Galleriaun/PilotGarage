@@ -46,6 +46,40 @@ export function formatCreatedStamp(iso: string): string {
   return `${date} - ${time}`
 }
 
+/** timestamptz -> Istanbul calendar date "YYYY-MM-DD" (for day bucketing). */
+export function istanbulDateISO(iso: string): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Istanbul' }).format(new Date(iso))
+}
+
+/** timestamptz -> Istanbul "HH:MM". */
+export function istanbulTime(iso: string): string {
+  return new Intl.DateTimeFormat('tr-TR', {
+    timeZone: 'Europe/Istanbul',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(iso))
+}
+
+/** timestamptz -> "YYYY-MM-DDTHH:MM" Istanbul, for <input type="datetime-local">. */
+export function istanbulDateTimeLocal(iso: string): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Istanbul',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(new Date(iso))
+  const g = (t: string) => parts.find((p) => p.type === t)?.value ?? '00'
+  return `${g('year')}-${g('month')}-${g('day')}T${g('hour')}:${g('minute')}`
+}
+
+/** "YYYY-MM-DDTHH:MM" (datetime-local, Istanbul wall clock) -> timestamptz ISO. */
+export function istanbulLocalToISO(local: string): string {
+  return `${local}:00+03:00`
+}
+
 /** "2026-07-02" -> "02.07.2026" — Kayıt Detay's TARİH display format. */
 export function formatDateDots(iso: string): string {
   const [y, m, d] = iso.split('-')

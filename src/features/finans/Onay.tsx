@@ -103,9 +103,9 @@ function OnayCard({
               disabled={busy}
               className="flex-1 cursor-pointer rounded-[10px] border-[1.5px] py-2 text-center text-xs font-semibold disabled:opacity-60"
               style={{
-                background: selected ? '#111' : '#fff',
-                borderColor: selected ? '#111' : '#E2E2E2',
-                color: selected ? '#fff' : '#888',
+                background: selected ? 'var(--seg-on)' : 'var(--seg)',
+                borderColor: selected ? 'var(--seg-on)' : 'var(--color-inputline)',
+                color: selected ? 'var(--seg-fg-on)' : 'var(--seg-fg)',
               }}
             >
               {ODEME_YONTEMI_LABELS[y]}
@@ -322,8 +322,8 @@ export default function Onay() {
               }}
               className="shrink-0 cursor-pointer whitespace-nowrap rounded-[20px] px-[14px] py-[8px] text-[13px] font-semibold"
               style={{
-                background: selected ? '#111' : '#F2F2F2',
-                color: selected ? '#fff' : '#888',
+                background: selected ? 'var(--seg-on)' : 'var(--seg)',
+                color: selected ? 'var(--seg-fg-on)' : 'var(--seg-fg)',
               }}
             >
               {f.label}
@@ -343,8 +343,8 @@ export default function Onay() {
                 onClick={() => setManuelTur(t.key)}
                 className="shrink-0 cursor-pointer whitespace-nowrap rounded-[20px] px-3 py-[6px] text-xs font-semibold"
                 style={{
-                  background: selected ? '#3A3A3A' : '#F7F7F7',
-                  color: selected ? '#fff' : '#999',
+                  background: selected ? 'var(--seg-on)' : 'var(--seg)',
+                  color: selected ? 'var(--seg-fg-on)' : 'var(--seg-fg)',
                 }}
               >
                 {t.label}

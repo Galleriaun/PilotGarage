@@ -294,9 +294,14 @@ export default function PersonelDetay() {
       }
       setDraft({})
       setEditOpen(false)
-      // access to this business revoked -> back to the roster
+      // access to this business revoked -> back to the roster with a note
+      // naming the işletme(ler) the personel now belongs to
       if (businessIdsChanged && !current.businessIds.includes(businessId)) {
-        void navigate('/yonetim/personel')
+        const movedTo = businesses
+          .filter((b) => current.businessIds.includes(b.id))
+          .map((b) => b.name)
+          .join(' ve ')
+        void navigate('/yonetim/personel', { state: { movedTo } })
       }
     } catch {
       setSaveError('Kaydedilemedi. Tekrar deneyin.')
@@ -508,9 +513,9 @@ export default function PersonelDetay() {
                         }
                         className="flex-1 cursor-pointer rounded-[12px] border-[1.5px] py-[11px] text-center text-[13px] font-semibold"
                         style={{
-                          background: selected ? '#111' : '#F2F2F2',
-                          borderColor: selected ? '#111' : '#F2F2F2',
-                          color: selected ? '#fff' : '#888',
+                          background: selected ? 'var(--seg-on)' : 'var(--seg)',
+                          borderColor: selected ? 'var(--seg-on)' : 'var(--seg)',
+                          color: selected ? 'var(--seg-fg-on)' : 'var(--seg-fg)',
                         }}
                       >
                         {b.name}
@@ -641,7 +646,7 @@ export default function PersonelDetay() {
                     className="flex cursor-pointer items-center gap-[13px] rounded-[14px] border-[1.5px] px-4 py-[14px] text-left"
                     style={{
                       background: selected ? '#FAFAFA' : '#fff',
-                      borderColor: selected ? '#111' : '#EDEDED',
+                      borderColor: selected ? 'var(--seg-on)' : 'var(--color-divider)',
                     }}
                   >
                     <div className="min-w-0 flex-1">
@@ -685,9 +690,9 @@ export default function PersonelDetay() {
                         }
                         className="flex-1 cursor-pointer rounded-[12px] border-[1.5px] py-[11px] text-center text-[13px] font-semibold"
                         style={{
-                          background: selected ? '#111' : '#F2F2F2',
-                          borderColor: selected ? '#111' : '#F2F2F2',
-                          color: selected ? '#fff' : '#888',
+                          background: selected ? 'var(--seg-on)' : 'var(--seg)',
+                          borderColor: selected ? 'var(--seg-on)' : 'var(--seg)',
+                          color: selected ? 'var(--seg-fg-on)' : 'var(--seg-fg)',
                         }}
                       >
                         {b.name}
