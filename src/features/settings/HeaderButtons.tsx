@@ -25,6 +25,32 @@ export function BellButton() {
   )
 }
 
+/** Header profile — opens Ayarlar (Personel home; nav tab became İşlemler). */
+export function ProfileButton() {
+  const navigate = useNavigate()
+  return (
+    <button
+      type="button"
+      aria-label="Profil"
+      onClick={() => void navigate('/ayarlar')}
+      className="flex h-9 w-9 cursor-pointer items-center justify-center"
+    >
+      <svg
+        width="21"
+        height="21"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="var(--color-ink)"
+        strokeWidth="2"
+        strokeLinecap="round"
+      >
+        <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
+        <circle cx="12" cy="7" r="4" />
+      </svg>
+    </button>
+  )
+}
+
 /** Header trash — opens the Çöp Kutusu (finance screens only). */
 export function TrashHeaderButton() {
   const navigate = useNavigate()

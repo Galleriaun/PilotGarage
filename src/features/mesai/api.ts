@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
+import { istanbulTodayISO, shiftDaysISO } from '../../lib/dates'
 
 export interface MesaiKayit {
   id: string
@@ -9,6 +10,12 @@ export interface MesaiKayit {
   mesafe_m: number | null
   created_at: string
   profile?: { full_name: string } | null
+}
+
+export interface AcikOturum {
+  profileId: string
+  name: string
+  since: string // GIRIŞ created_at
 }
 
 async function currentUserId(): Promise<string> {
@@ -104,6 +111,44 @@ export function useMesaiKisiKayitlari(
   })
 }
 
+/**
+ * Who is currently clocked in — anyone whose latest event is a GIRIŞ.
+ * Looks back a few days (the nightly auto-close keeps stale sessions out).
+ */
+export function useMesaiAcikOturumlar(businessId: string) {
+  return useQuery({
+    queryKey: ['mesai-acik', businessId],
+    queryFn: async (): Promise<AcikOturum[]> => {
+      const since = shiftDaysISO(istanbulTodayISO(), -3)
+      const { data, error } = await supabase
+        .from('mesai_kayitlari')
+        .select(
+          'profile_id, tip, created_at, profile:profiles!mesai_kayitlari_profile_id_fkey(full_name)',
+        )
+        .eq('business_id', businessId)
+        .gte('created_at', `${since}T00:00:00+03:00`)
+        .order('created_at', { ascending: false })
+      if (error) throw error
+      const rows = data as unknown as MesaiKayit[]
+      const seen = new Set<string>()
+      const acik: AcikOturum[] = []
+      for (const r of rows) {
+        if (seen.has(r.profile_id)) continue // rows are newest-first: first = latest
+        seen.add(r.profile_id)
+        if (r.tip === 'GIRIS') {
+          acik.push({
+            profileId: r.profile_id,
+            name: r.profile?.full_name || 'İsimsiz',
+            since: r.created_at,
+          })
+        }
+      }
+      return acik
+    },
+    enabled: businessId !== '',
+  })
+}
+
 export interface MesaiKonum {
   konum_lat: number | null
   konum_lng: number | null
@@ -184,6 +229,7 @@ export function useInvalidateMesai() {
     void queryClient.invalidateQueries({ queryKey: ['mesai-mine'] })
     void queryClient.invalidateQueries({ queryKey: ['mesai-all'] })
     void queryClient.invalidateQueries({ queryKey: ['mesai-kisi'] })
+    void queryClient.invalidateQueries({ queryKey: ['mesai-acik'] })
   }
 }
 
@@ -193,6 +239,7 @@ function useMesaiInvalidateOnSuccess() {
     void queryClient.invalidateQueries({ queryKey: ['mesai-mine'] })
     void queryClient.invalidateQueries({ queryKey: ['mesai-all'] })
     void queryClient.invalidateQueries({ queryKey: ['mesai-kisi'] })
+    void queryClient.invalidateQueries({ queryKey: ['mesai-acik'] })
   }
 }
 

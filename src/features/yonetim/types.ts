@@ -43,7 +43,29 @@ export interface CariIsletme {
   business_id: string
   name: string
   note: string
+  /** Telefon, ulusal 10 hane (036); '' = girilmedi. +90 UI'da sabittir. */
+  telefon: string
   hareketler: CariHareket[]
+}
+
+// ── İstekler (037) ──
+
+export type IstekTur = 'AVANS' | 'SIKAYET' | 'ONERI'
+export type IstekDurum = 'BEKLIYOR' | 'ONAYLANDI' | 'REDDEDILDI' | 'ALINDI'
+
+export interface Istek {
+  id: string
+  business_id: string
+  profile_id: string
+  tur: IstekTur
+  /** AVANS only — NUMERIC string from PostgREST. */
+  tutar: number | string | null
+  metin: string
+  durum: IstekDurum
+  created_at: string
+  karar_tarihi: string | null
+  /** NULL = deleted account. */
+  profile: { full_name: string; role: Role | null } | null
 }
 
 export const ROLE_LABELS: Record<Role, string> = {

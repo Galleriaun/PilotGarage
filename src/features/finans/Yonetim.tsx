@@ -408,9 +408,12 @@ export default function Yonetim() {
       {/* Onay floating button — always visible; the badge shows only when
           something is actually waiting. Portaled to <body>: the screen
           entrance animation transforms the wrapper, which would hijack
-          position:fixed and pin the button to the scroll content. */}
+          position:fixed and pin the button to the scroll content.
+          Offset mirrors the nav's height (12px pt + ~41px content +
+          max(20px, safe-area) pb) plus a 12px gap — the old 72px+env()
+          landed ON the nav in Safari, where the inset is 0. */}
       {createPortal(
-        <div className="pointer-events-none fixed inset-x-0 bottom-[calc(72px+env(safe-area-inset-bottom))] z-40 mx-auto flex w-full max-w-[480px] justify-center md:bottom-8">
+        <div className="pointer-events-none fixed inset-x-0 bottom-[calc(65px+max(20px,env(safe-area-inset-bottom)))] z-40 mx-auto flex w-full max-w-[480px] justify-center md:bottom-8">
           <button
             type="button"
             onClick={() => void navigate('/yonetim/onay')}

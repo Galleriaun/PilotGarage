@@ -124,18 +124,20 @@ export function Avatar({
   )
 }
 
-/** Back link + icon square + title (+ optional black Ekle button). */
+/** Back link + icon square + title (+ optional black Ekle button / custom right slot). */
 export function ScreenHeader({
   title,
   icon,
   iconBg,
   onAdd,
+  right,
   backTo = -1,
 }: {
   title: string
   icon: ReactNode
   iconBg: string
   onAdd?: () => void
+  right?: ReactNode
   backTo?: string | -1
 }) {
   const navigate = useNavigate()
@@ -174,6 +176,7 @@ export function ScreenHeader({
             <span className="text-[15px] font-semibold text-white">Ekle</span>
           </button>
         )}
+        {right}
       </div>
     </>
   )

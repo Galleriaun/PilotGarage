@@ -4,7 +4,7 @@ import { useBusiness } from '../../app/providers/BusinessProvider'
 import { periodRange, type PeriodKey } from '../finans/selectors'
 import { BackChevron } from '../auth/EyeIcon'
 import { Avatar } from '../yonetim/shared'
-import { useMesaiKayitlari } from './api'
+import { useMesaiAcikOturumlar, useMesaiKayitlari } from './api'
 import { buildReports, formatDuration } from './report'
 
 const PERIODS: { key: PeriodKey; label: string }[] = [
@@ -18,14 +18,14 @@ export default function MesaiKayitlari() {
   const navigate = useNavigate()
   const { activeBusiness } = useBusiness()
   const businessId = activeBusiness?.id ?? ''
-  const [period, setPeriod] = useState<PeriodKey>('HAFTA')
+  const [period, setPeriod] = useState<PeriodKey>('BUGUN')
   const range = useMemo(() => periodRange(period), [period])
   const { data: kayitlar = [], isPending } = useMesaiKayitlari(businessId, range)
+  const { data: acik = [] } = useMesaiAcikOturumlar(businessId)
 
   const reports = useMemo(() => buildReports(kayitlar, period), [kayitlar, period])
-
-  const totalMin = reports.reduce((sum, r) => sum + r.totalMin, 0)
-  const sessionCount = reports.reduce((sum, r) => sum + r.sessions.length, 0)
+  // Live "şu an mesaide" — latest event is a GIRIŞ, independent of the period.
+  const acikSet = useMemo(() => new Set(acik.map((a) => a.profileId)), [acik])
 
   return (
     <div className="screen-forward">
@@ -72,24 +72,6 @@ export default function MesaiKayitlari() {
         })}
       </div>
 
-      {/* Özet */}
-      <div className="mx-6 mt-4">
-        <div
-          className="rounded-[18px] px-5 py-4"
-          style={{ background: 'linear-gradient(150deg,#1C1C1E,#0A0A0A)' }}
-        >
-          <div className="text-[11px] font-semibold tracking-[0.5px] text-white/50">
-            TOPLAM MESAİ
-          </div>
-          <div className="mt-1 text-[26px] font-bold tracking-[-0.5px] text-white">
-            {totalMin > 0 ? formatDuration(totalMin) : '—'}
-          </div>
-          <div className="mt-[2px] text-[12px] text-white/50">
-            {reports.length} kişi · {sessionCount} oturum
-          </div>
-        </div>
-      </div>
-
       {isPending ? (
         <div className="flex justify-center py-14">
           <div className="h-5 w-5 animate-spin rounded-full border-2 border-divider border-t-ink" />
@@ -100,34 +82,46 @@ export default function MesaiKayitlari() {
         </div>
       ) : (
         <div className="flex flex-col gap-2 px-6 pt-4">
-          {reports.map((r) => (
-            <button
-              key={r.profileId}
-              type="button"
-              onClick={() =>
-                void navigate(`/yonetim/mesai/${r.profileId}`, { state: { name: r.name } })
-              }
-              className="pressable flex w-full cursor-pointer items-center gap-3 rounded-[16px] bg-card px-4 py-3 text-left"
-            >
-              <Avatar name={r.name} size={38} />
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-bold text-ink">{r.name}</div>
-                <div className="mt-[2px] text-[11px] text-muted">
-                  {r.sessions.length} oturum
-                  {r.hasOpen && <span className="text-success"> · şu an mesaide</span>}
-                </div>
-              </div>
-              <div className="shrink-0 text-[14px] font-bold text-ink">
-                {r.totalMin > 0 ? formatDuration(r.totalMin) : '—'}
-              </div>
-              <svg
-                className="shrink-0 text-faint"
-                width="8" height="14" viewBox="0 0 9 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+          {reports.map((r) => {
+            const mesaide = acikSet.has(r.profileId)
+            return (
+              <button
+                key={r.profileId}
+                type="button"
+                onClick={() =>
+                  void navigate(`/yonetim/mesai/${r.profileId}`, { state: { name: r.name } })
+                }
+                className="pressable flex w-full cursor-pointer items-center gap-3 rounded-[16px] bg-card px-4 py-3 text-left"
               >
-                <polyline points="1 1 8 8 1 15" />
-              </svg>
-            </button>
-          ))}
+                <Avatar name={r.name} size={38} />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-bold text-ink">{r.name}</div>
+                  <div className="mt-[3px] flex items-center gap-1.5 text-[11px]">
+                    <span
+                      className="h-[6px] w-[6px] shrink-0 rounded-full"
+                      style={{ background: mesaide ? 'var(--color-success)' : 'var(--color-faint)' }}
+                    />
+                    <span
+                      className="font-semibold"
+                      style={{ color: mesaide ? 'var(--color-success)' : 'var(--color-muted)' }}
+                    >
+                      {mesaide ? 'Şu an mesaide' : 'Mesaide değil'}
+                    </span>
+                    <span className="text-faint">· {r.sessions.length} oturum</span>
+                  </div>
+                </div>
+                <div className="shrink-0 text-[14px] font-bold text-ink">
+                  {r.totalMin > 0 ? formatDuration(r.totalMin) : '—'}
+                </div>
+                <svg
+                  className="shrink-0 text-faint"
+                  width="8" height="14" viewBox="0 0 9 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                >
+                  <polyline points="1 1 8 8 1 15" />
+                </svg>
+              </button>
+            )
+          })}
         </div>
       )}
       <div className="h-10" />

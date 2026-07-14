@@ -33,7 +33,7 @@ export default function MesaiPersonelDetay() {
   const { activeBusiness } = useBusiness()
   const businessId = activeBusiness?.id ?? ''
 
-  const [period, setPeriod] = useState<PeriodKey>('HAFTA')
+  const [period, setPeriod] = useState<PeriodKey>('BUGUN')
   const range = useMemo(() => periodRange(period), [period])
   const { data: kayitlar = [], isPending } = useMesaiKisiKayitlari(businessId, personelId, range)
 

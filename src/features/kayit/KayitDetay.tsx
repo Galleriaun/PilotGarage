@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router'
+import { useAuth } from '../../app/providers/AuthProvider'
 import { formatDateDots } from '../../lib/dates'
+import { kurusToInput, numericStringToKurus } from '../../lib/money'
+import { canSeeFinance } from '../../lib/rbac'
+import type { OdemeYontemi } from '../../lib/types'
 import ConfirmDialog from '../../components/ui/ConfirmDialog'
 import { BackChevron } from '../auth/EyeIcon'
 import {
@@ -15,15 +19,18 @@ import {
 } from './api'
 import { PaketDropdown, SaatDropdown, paketFullLabel, saatLabel } from './components'
 import { DURUM_META, DURUM_MENU_META, DURUM_ORDER } from './durum'
+import { buildFinansAlanlari, YONTEM_LABELS } from './finans'
+import { formatTelDisplay, isTelComplete, normalizeTel, telHref } from './telefon'
 import {
   ArrowLeftSmall,
   ArrowRightSmall,
   ChevronDownIcon,
+  PhoneIcon,
   PhotoPlaceholderIcon,
   PlusDashedIcon,
   XIcon,
 } from './icons'
-import type { KayitDurum, KayitFields } from './types'
+import type { KayitDurum, KayitFields, KayitFinansAlanlari } from './types'
 
 function InfoCard({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -51,10 +58,16 @@ export default function KayitDetay() {
   const addPhotos = useAddPhotos()
   const deletePhoto = useDeletePhoto()
   const requestSilme = useRequestKayitSilme()
+  const { profile } = useAuth()
+  const isFinance = canSeeFinance(profile?.role ?? null)
 
   const [draft, setDraft] = useState<KayitFields | null>(null)
   const editing = draft !== null
   const [error, setError] = useState('')
+  // Finans (034): tutar override + yöntem + komisyon
+  const [finansTutar, setFinansTutar] = useState('')
+  const [finansYontem, setFinansYontem] = useState<OdemeYontemi | null>(null)
+  const [finansKomisyon, setFinansKomisyon] = useState('')
 
   const [photoIndex, setPhotoIndex] = useState(0)
   const [lightbox, setLightbox] = useState(false)
@@ -96,12 +109,17 @@ export default function KayitDetay() {
   const durumMeta = DURUM_META[kayit.durum]
   const currentPhoto = fotograflar[photoIndex]
   const currentUrl = currentPhoto ? (photoUrls[currentPhoto.storage_path] ?? null) : null
+  // Para alanları yalnızca gelir henüz doğmadan (aktif işlem yokken) düzenlenir;
+  // gelir oluştuktan sonra değişiklik mevcut işlemi etkilemez.
+  const hasActiveGelir = kayit.gelirler.some((g) => g.durum !== 'REDDEDILDI')
+  const canEditFinans = isFinance && !hasActiveGelir
 
   function startEdit() {
     if (!kayit) return
     setError('')
     setDraft({
       musteri_adi: kayit.musteri_adi,
+      musteri_tel: kayit.musteri_tel,
       plaka: kayit.plaka,
       marka: kayit.marka,
       model: kayit.model,
@@ -114,6 +132,11 @@ export default function KayitDetay() {
       bitis_saati: kayit.bitis_saati,
       notlar: kayit.notlar,
     })
+    setFinansTutar(kayit.tutar != null ? kurusToInput(numericStringToKurus(kayit.tutar)) : '')
+    setFinansYontem(kayit.odeme_yontemi)
+    setFinansKomisyon(
+      kayit.komisyon != null ? kurusToInput(numericStringToKurus(kayit.komisyon)) : '',
+    )
   }
 
   async function saveEdit() {
@@ -139,8 +162,29 @@ export default function KayitDetay() {
       setError('Bitiş saati başlangıçtan sonra olmalı.')
       return
     }
+    if (draft.musteri_tel && !isTelComplete(draft.musteri_tel)) {
+      setError('Telefon numarası eksik — 5 ile başlayan 10 hane girin.')
+      return
+    }
+    let finans: KayitFinansAlanlari | undefined
+    if (canEditFinans) {
+      const res = buildFinansAlanlari(
+        {
+          paketId: draft.paket_id,
+          tutar: finansTutar,
+          odemeYontemi: finansYontem,
+          komisyon: finansKomisyon,
+        },
+        false, // edit: yöntem optional (blank still asked at Onay)
+      )
+      if ('error' in res) {
+        setError(res.error)
+        return
+      }
+      finans = res.finans
+    }
     try {
-      await updateKayit.mutateAsync({ id, fields: draft })
+      await updateKayit.mutateAsync({ id, fields: draft, finans })
       setDraft(null)
     } catch {
       setError('Kaydedilemedi. Tekrar deneyin.')
@@ -364,19 +408,58 @@ export default function KayitDetay() {
 
         {/* Müşteri */}
         {editing && draft ? (
-          <div className="mb-2 rounded-[14px] bg-card px-4 py-[10px]">
-            <div className="mb-1 text-[11px] font-bold tracking-[0.5px] text-faint">
-              MÜŞTERİ ADI
+          <div className="mb-2 flex gap-2">
+            <div className="min-w-0 flex-1 rounded-[14px] bg-card px-4 py-[10px]">
+              <div className="mb-1 text-[11px] font-bold tracking-[0.5px] text-faint">
+                MÜŞTERİ ADI
+              </div>
+              <input
+                type="text"
+                value={draft.musteri_adi}
+                onChange={(e) => setDraft({ ...draft, musteri_adi: e.target.value })}
+                className="w-full border-none bg-transparent p-0 text-base font-bold text-ink outline-none"
+              />
             </div>
-            <input
-              type="text"
-              value={draft.musteri_adi}
-              onChange={(e) => setDraft({ ...draft, musteri_adi: e.target.value })}
-              className="w-full border-none bg-transparent p-0 text-base font-bold text-ink outline-none"
-            />
+            <div className="min-w-0 flex-1 rounded-[14px] bg-card px-4 py-[10px]">
+              <div className="mb-1 text-[11px] font-bold tracking-[0.5px] text-faint">
+                MÜŞTERİ NUMARASI
+              </div>
+              <div className="flex items-center">
+                <span className="shrink-0 text-base font-bold text-muted">+90</span>
+                <input
+                  type="tel"
+                  inputMode="numeric"
+                  value={draft.musteri_tel}
+                  onChange={(e) =>
+                    setDraft({ ...draft, musteri_tel: normalizeTel(e.target.value) })
+                  }
+                  placeholder="5__ ___ __ __"
+                  maxLength={10}
+                  className="w-full min-w-0 border-none bg-transparent p-0 pl-1 text-base font-bold text-ink outline-none placeholder:text-faint"
+                />
+              </div>
+            </div>
           </div>
         ) : (
-          <p className="mb-[2px] text-base font-bold text-ink">{kayit.musteri_adi || '—'}</p>
+          <div className="mb-[2px] flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-base font-bold text-ink">{kayit.musteri_adi || '—'}</p>
+              {isTelComplete(kayit.musteri_tel) && (
+                <p className="mt-[1px] text-[13px] text-muted">
+                  {formatTelDisplay(kayit.musteri_tel)}
+                </p>
+              )}
+            </div>
+            {isTelComplete(kayit.musteri_tel) && (
+              <a
+                href={telHref(kayit.musteri_tel)}
+                aria-label="Müşteriyi ara"
+                className="pressable flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-full bg-success"
+              >
+                <PhoneIcon size={17} color="#fff" />
+              </a>
+            )}
+          </div>
         )}
         <p className="mb-6 text-[15px] text-muted">{subtitleParts.join(' · ') || '—'}</p>
 
@@ -466,7 +549,13 @@ export default function KayitDetay() {
             <PaketDropdown
               paketler={paketler}
               selectedId={draft.paket_id}
-              onSelect={(pid) => setDraft({ ...draft, paket_id: pid })}
+              onSelect={(pid) => {
+                setDraft({ ...draft, paket_id: pid })
+                if (canEditFinans && pid) {
+                  const p = paketler.find((x) => x.id === pid)
+                  if (p) setFinansTutar(kurusToInput(numericStringToKurus(p.price)))
+                }
+              }}
               variant="card"
             />
           ) : (
@@ -475,6 +564,74 @@ export default function KayitDetay() {
             </div>
           )}
         </div>
+
+        {/* Finans (034): tutar / ödeme yöntemi / komisyon — düzenlenebilir yalnızca
+            gelir henüz doğmadıysa (finans + aktif işlem yok) */}
+        {editing && canEditFinans && (
+          <>
+            <div className="mb-3 rounded-[14px] bg-card px-4 py-[14px]">
+              <div className="mb-1 text-[11px] font-bold tracking-[0.5px] text-faint">
+                TUTAR (₺)
+              </div>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={finansTutar}
+                onChange={(e) => setFinansTutar(e.target.value)}
+                placeholder="Paket fiyatı"
+                className={bareInputCls}
+              />
+            </div>
+
+            <div className="mb-3 rounded-[14px] bg-card px-4 py-[14px]">
+              <div className="mb-[8px] text-[11px] font-bold tracking-[0.5px] text-faint">
+                ÖDEME YÖNTEMİ
+              </div>
+              <div className="flex gap-2">
+                {(['NAKIT', 'KREDI_KARTI', 'HAVALE'] as const).map((y) => {
+                  const selected = finansYontem === y
+                  return (
+                    <button
+                      key={y}
+                      type="button"
+                      onClick={() => setFinansYontem(selected ? null : y)}
+                      className="flex-1 cursor-pointer rounded-[10px] border-[1.5px] py-[10px] text-center text-[13px] font-semibold"
+                      style={{
+                        background: selected ? 'var(--seg-on)' : 'var(--seg)',
+                        borderColor: selected ? 'var(--seg-on)' : 'var(--color-inputline)',
+                        color: selected ? 'var(--seg-fg-on)' : 'var(--seg-fg)',
+                      }}
+                    >
+                      {YONTEM_LABELS[y]}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            {finansYontem === 'KREDI_KARTI' && (
+              <div className="mb-3 rounded-[14px] bg-card px-4 py-[14px]">
+                <div className="mb-1 text-[11px] font-bold tracking-[0.5px] text-faint">
+                  KOMİSYON (₺)
+                </div>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={finansKomisyon}
+                  onChange={(e) => setFinansKomisyon(e.target.value)}
+                  placeholder="İsteğe bağlı"
+                  className={bareInputCls}
+                />
+              </div>
+            )}
+          </>
+        )}
+
+        {editing && isFinance && hasActiveGelir && (
+          <div className="mb-3 rounded-[14px] bg-field px-4 py-3 text-[12px] leading-relaxed text-muted">
+            Gelir oluşturuldu; tutar/ödeme yöntemi ilgili işlem üzerinden yönetilir.
+          </div>
+        )}
 
         <div className="mb-3 flex gap-[10px]">
           <InfoCard label="TARİH">

@@ -4,8 +4,8 @@ import { useAuth } from '../../app/providers/AuthProvider'
 import { useBusiness } from '../../app/providers/BusinessProvider'
 import { formatTL, numericStringToKurus, parseTLToKurus } from '../../lib/money'
 import type { Profile, Role } from '../../lib/types'
-import { useApproveSignup, useMembers, usePendingProfiles } from './api'
-import { ROLE_LABELS, ROLE_OPTIONS } from './types'
+import { useApproveSignup, useBekleyenIstekTurleri, useMembers, usePendingProfiles } from './api'
+import { ROLE_LABELS, ROLE_OPTIONS, type IstekTur } from './types'
 import {
   Avatar,
   FormModal,
@@ -182,6 +182,8 @@ export default function PersonelList() {
 
   const { data: members = [], isPending } = useMembers(businessId)
   const { data: pendingProfiles = [] } = usePendingProfiles(isYonetici)
+  // red dot on the İstekler button when any istek is waiting (037)
+  const { data: bekleyenIstek = new Set<IstekTur>() } = useBekleyenIstekTurleri(businessId)
   const [approving, setApproving] = useState<Profile | null>(null)
 
   // "Personel X işletmesine taşındı" — set when İşletme Erişimi removed this
@@ -199,7 +201,37 @@ export default function PersonelList() {
 
   return (
     <div className="screen-forward">
-      <ScreenHeader title="Personel" icon={<UsersIcon />} iconBg="#F0FDF4" backTo="/yonetim" />
+      <ScreenHeader
+        title="Personel"
+        icon={<UsersIcon />}
+        iconBg="#F0FDF4"
+        backTo="/yonetim"
+        right={
+          <button
+            type="button"
+            onClick={() => void navigate('/yonetim/istekler')}
+            className="pressable relative flex shrink-0 cursor-pointer items-center gap-[6px] rounded-[12px] bg-field px-[16px] py-[10px]"
+          >
+            <span className="text-[15px] font-semibold text-ink">İstekler</span>
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.4"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="text-ink"
+            >
+              <polyline points="9 18 15 12 9 6" />
+            </svg>
+            {bekleyenIstek.size > 0 && (
+              <span className="absolute -right-[3px] -top-[3px] h-[11px] w-[11px] rounded-full border-2 border-white bg-[#E53935]" />
+            )}
+          </button>
+        }
+      />
 
       {toast && (
         <div className="menu-in mx-6 mb-4 rounded-[14px] bg-success-soft px-4 py-3 text-center text-[13px] font-semibold text-success">

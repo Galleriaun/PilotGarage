@@ -5,7 +5,7 @@ import { useKayitlar, usePhotoUrls } from './api'
 import { EmptyState, KayitThumb, SearchAddBar, StatusPill } from './components'
 import { SwapIcon } from './icons'
 import { KayitCardMeta } from './YoneticiHome'
-import { BellButton } from '../settings/HeaderButtons'
+import { BellButton, ProfileButton } from '../settings/HeaderButtons'
 import type { KayitDurum } from './types'
 
 type Filter = 'ALL' | KayitDurum
@@ -60,6 +60,7 @@ export default function PersonelHome() {
         )}
         <div className="flex-1" />
         <BellButton />
+        <ProfileButton />
       </div>
 
       <div className="px-6 pt-[14px]">

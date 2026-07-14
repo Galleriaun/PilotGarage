@@ -1,13 +1,19 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router'
+import { useAuth } from '../../app/providers/AuthProvider'
 import { useBusiness } from '../../app/providers/BusinessProvider'
 import { istanbulTodayISO } from '../../lib/dates'
+import { kurusToInput, numericStringToKurus } from '../../lib/money'
+import { canSeeFinance } from '../../lib/rbac'
+import type { OdemeYontemi } from '../../lib/types'
 import { useCreateKayit, usePaketler } from './api'
 import { PaketDropdown, SaatDropdown } from './components'
 import { DURUM_ORDER, DURUM_META, DURUM_SEGMENT_META } from './durum'
+import { buildFinansAlanlari, YONTEM_LABELS } from './finans'
+import { isTelComplete, normalizeTel } from './telefon'
 import { PhotoPlaceholderIcon, PlusDashedIcon, XIcon } from './icons'
 import { BackChevron } from '../auth/EyeIcon'
-import type { KayitDurum } from './types'
+import type { KayitDurum, KayitFinansAlanlari } from './types'
 
 const inputCls =
   'w-full rounded-[14px] border-[1.5px] border-inputline bg-inputfill px-[18px] py-4 text-[15px] text-ink outline-none placeholder:text-faint'
@@ -27,12 +33,15 @@ interface PhotoDraft {
 
 export default function YeniKayit() {
   const navigate = useNavigate()
+  const { profile } = useAuth()
+  const isFinance = canSeeFinance(profile?.role ?? null)
   const { activeBusiness } = useBusiness()
   const businessId = activeBusiness?.id ?? ''
   const { data: paketler = [] } = usePaketler(businessId)
   const createKayit = useCreateKayit()
 
   const [musteriAdi, setMusteriAdi] = useState('')
+  const [musteriTel, setMusteriTel] = useState('') // ulusal kısım "5XXXXXXXXX"
   const [plaka, setPlaka] = useState('')
   const [marka, setMarka] = useState('')
   const [model, setModel] = useState('')
@@ -45,6 +54,10 @@ export default function YeniKayit() {
   const [bitisSaati, setBitisSaati] = useState<string | null>(null)
   const [notlar, setNotlar] = useState('')
   const [durum, setDurum] = useState<KayitDurum>('AKTIF')
+  // Finans (034): tutar override + ödeme yöntemi + KK komisyonu
+  const [tutar, setTutar] = useState('')
+  const [odemeYontemi, setOdemeYontemi] = useState<OdemeYontemi | null>(null)
+  const [komisyon, setKomisyon] = useState('')
   const [photos, setPhotos] = useState<PhotoDraft[]>([])
   const [error, setError] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -98,12 +111,28 @@ export default function YeniKayit() {
       setError('Bitiş saati başlangıçtan sonra olmalı.')
       return
     }
+    if (musteriTel && !isTelComplete(musteriTel)) {
+      setError('Telefon numarası eksik — 5 ile başlayan 10 hane girin.')
+      return
+    }
+
+    // Finans alanları (034): tutar override + yöntem + komisyon
+    let finans: KayitFinansAlanlari | undefined
+    if (isFinance) {
+      const res = buildFinansAlanlari({ paketId, tutar, odemeYontemi, komisyon })
+      if ('error' in res) {
+        setError(res.error)
+        return
+      }
+      finans = res.finans
+    }
 
     try {
       const { kayitId, photoFailures } = await createKayit.mutateAsync({
         businessId,
         fields: {
           musteri_adi: musteriAdi.trim(),
+          musteri_tel: musteriTel,
           plaka,
           marka: marka.trim(),
           model: model.trim(),
@@ -118,6 +147,7 @@ export default function YeniKayit() {
         },
         durum,
         photos: photos.map((p) => p.file),
+        finans,
       })
       void navigate(`/kayit/${kayitId}`, { replace: true, state: { photoFailures } })
     } catch {
@@ -142,14 +172,32 @@ export default function YeniKayit() {
         <h1 className="mb-6 text-[26px] font-bold tracking-[-0.4px] text-ink">Yeni Araç Kaydı</h1>
 
         <div className="flex flex-col gap-3">
-          <div>
-            <FieldLabel>MÜŞTERİ ADI</FieldLabel>
-            <input
-              type="text"
-              value={musteriAdi}
-              onChange={(e) => setMusteriAdi(e.target.value)}
-              className={inputCls}
-            />
+          <div className="flex gap-3">
+            <div className="min-w-0 flex-1">
+              <FieldLabel>MÜŞTERİ ADI</FieldLabel>
+              <input
+                type="text"
+                value={musteriAdi}
+                onChange={(e) => setMusteriAdi(e.target.value)}
+                className={inputCls}
+              />
+            </div>
+            <div className="min-w-0 flex-1">
+              <FieldLabel>MÜŞTERİ NUMARASI</FieldLabel>
+              {/* +90 sabit; yalnızca 5 ile başlayan 10 hane yazılabilir (035) */}
+              <div className="flex items-center rounded-[14px] border-[1.5px] border-inputline bg-inputfill px-[14px] py-4">
+                <span className="shrink-0 text-[15px] font-semibold text-muted">+90</span>
+                <input
+                  type="tel"
+                  inputMode="numeric"
+                  value={musteriTel}
+                  onChange={(e) => setMusteriTel(normalizeTel(e.target.value))}
+                  placeholder="5__ ___ __ __"
+                  maxLength={10}
+                  className="w-full min-w-0 border-none bg-transparent pl-2 text-[15px] text-ink outline-none placeholder:text-faint"
+                />
+              </div>
+            </div>
           </div>
 
           <div>
@@ -222,10 +270,74 @@ export default function YeniKayit() {
             <PaketDropdown
               paketler={paketler}
               selectedId={paketId}
-              onSelect={setPaketId}
+              onSelect={(id) => {
+                setPaketId(id)
+                // finans: seçilen paketin fiyatını tutar alanına ön-doldur
+                if (isFinance && id) {
+                  const p = paketler.find((x) => x.id === id)
+                  if (p) setTutar(kurusToInput(numericStringToKurus(p.price)))
+                }
+              }}
               variant="form"
             />
           </div>
+
+          {isFinance && (
+            <>
+              <div>
+                <FieldLabel>TUTAR (₺)</FieldLabel>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={tutar}
+                  onChange={(e) => setTutar(e.target.value)}
+                  placeholder="Paket fiyatı"
+                  className={inputCls}
+                />
+              </div>
+
+              <div>
+                <FieldLabel>ÖDEME YÖNTEMİ</FieldLabel>
+                <div className="flex gap-2">
+                  {(['NAKIT', 'KREDI_KARTI', 'HAVALE'] as const).map((y) => {
+                    const selected = odemeYontemi === y
+                    return (
+                      <button
+                        key={y}
+                        type="button"
+                        onClick={() => setOdemeYontemi(y)}
+                        className="flex-1 cursor-pointer rounded-[12px] border-[1.5px] py-3 text-center text-[13px] font-semibold"
+                        style={{
+                          background: selected ? 'var(--seg-on)' : 'var(--seg)',
+                          borderColor: selected ? 'var(--seg-on)' : 'var(--color-inputline)',
+                          color: selected ? 'var(--seg-fg-on)' : 'var(--seg-fg)',
+                        }}
+                      >
+                        {YONTEM_LABELS[y]}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {odemeYontemi === 'KREDI_KARTI' && (
+                <div>
+                  <FieldLabel>KOMİSYON (₺)</FieldLabel>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={komisyon}
+                    onChange={(e) => setKomisyon(e.target.value)}
+                    placeholder="İsteğe bağlı"
+                    className={inputCls}
+                  />
+                  <p className="mt-[6px] text-xs leading-relaxed text-faint">
+                    Onaylandığında komisyon kasadan ayrı bir gider olarak düşülür.
+                  </p>
+                </div>
+              )}
+            </>
+          )}
 
           <div>
             <FieldLabel>TARİH</FieldLabel>

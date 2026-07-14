@@ -45,6 +45,7 @@ export default function AddTxModal({ open, tur, businessId, onClose }: AddTxModa
   const [kategoriId, setKategoriId] = useState<string | null>(null)
   const [kategoriOpen, setKategoriOpen] = useState(false)
   const [odemeYontemi, setOdemeYontemi] = useState<OdemeYontemi | null>(null)
+  const [komisyon, setKomisyon] = useState('') // KK only — separate gider on approval
   const [gun, setGun] = useState(0) // 0 = bir kez, 1–28 = her ay o gün otomatik
   const [error, setError] = useState('')
 
@@ -57,6 +58,7 @@ export default function AddTxModal({ open, tur, businessId, onClose }: AddTxModa
     setKategoriId(null)
     setKategoriOpen(false)
     setOdemeYontemi(null)
+    setKomisyon('')
     setGun(0)
     setError('')
   }
@@ -78,6 +80,18 @@ export default function AddTxModal({ open, tur, businessId, onClose }: AddTxModa
       setError('Ödeme yöntemi seçin (Nakit / Kredi Kartı).')
       return
     }
+    let komisyonKurus: number | null = null
+    if (odemeYontemi === 'KREDI_KARTI' && komisyon.trim() !== '') {
+      komisyonKurus = parseTLToKurus(komisyon)
+      if (komisyonKurus === null || komisyonKurus <= 0) {
+        setError('Geçerli bir komisyon girin.')
+        return
+      }
+      if (komisyonKurus >= kurus) {
+        setError('Komisyon, işlem tutarından küçük olmalıdır.')
+        return
+      }
+    }
     try {
       await addIslem.mutateAsync({
         businessId,
@@ -87,6 +101,7 @@ export default function AddTxModal({ open, tur, businessId, onClose }: AddTxModa
         kategoriId,
         odemeYontemi,
         odemeGunu: gun,
+        komisyonKurus,
       })
       reset()
       onClose()
@@ -203,6 +218,24 @@ export default function AddTxModal({ open, tur, businessId, onClose }: AddTxModa
                   })}
                 </div>
               </div>
+
+              {odemeYontemi === 'KREDI_KARTI' && (
+                <div>
+                  <div className={fieldLabelCls}>KOMİSYON (₺) — İSTEĞE BAĞLI</div>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    placeholder="0"
+                    value={komisyon}
+                    onChange={(e) => setKomisyon(e.target.value)}
+                    className={inputCls}
+                  />
+                  <p className="mt-[6px] text-xs leading-relaxed text-faint">
+                    İşlem kasaya işlendiğinde komisyon ayrı bir gider olarak düşülür
+                    {gun > 0 ? ' — tekrarlanan işlemde her seferinde' : ''}.
+                  </p>
+                </div>
+              )}
 
               <div>
                 <div className={fieldLabelCls}>TEKRAR</div>

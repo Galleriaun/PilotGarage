@@ -60,23 +60,6 @@ function BellIcon({ color }: { color: string }) {
   )
 }
 
-function UserIcon({ color }: { color: string }) {
-  return (
-    <svg
-      width="22"
-      height="22"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke={color}
-      strokeWidth="2"
-      strokeLinecap="round"
-    >
-      <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
-      <circle cx="12" cy="7" r="4" />
-    </svg>
-  )
-}
-
 function SwapNavIcon({ color }: { color: string }) {
   return (
     <svg
@@ -129,6 +112,28 @@ function GearNavIcon({ color }: { color: string }) {
     >
       <circle cx="12" cy="12" r="3" />
       <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z" />
+    </svg>
+  )
+}
+
+function ListNavIcon({ color }: { color: string }) {
+  return (
+    <svg
+      width="22"
+      height="22"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={color}
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <line x1="8" y1="6" x2="21" y2="6" />
+      <line x1="8" y1="12" x2="21" y2="12" />
+      <line x1="8" y1="18" x2="21" y2="18" />
+      <line x1="3" y1="6" x2="3.01" y2="6" />
+      <line x1="3" y1="12" x2="3.01" y2="12" />
+      <line x1="3" y1="18" x2="3.01" y2="18" />
     </svg>
   )
 }
@@ -217,6 +222,27 @@ function PersonelNav() {
       <div className="flex items-center justify-around">
         <button
           type="button"
+          onClick={() => void navigate('/istekler')}
+          className="flex min-w-[52px] cursor-pointer flex-col items-center gap-[3px]"
+        >
+          <ListNavIcon color={pathname.startsWith('/istek') ? ACTIVE : INACTIVE} />
+          <span
+            className="text-[10px] font-semibold"
+            style={{ color: pathname.startsWith('/istek') ? ACTIVE : INACTIVE }}
+          >
+            İşlemler
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={() => void navigate('/kayit/yeni')}
+          aria-label="Yeni Kayıt"
+          className="flex cursor-pointer items-center justify-center self-stretch"
+        >
+          <PlusFab size={48} />
+        </button>
+        <button
+          type="button"
           onClick={() => void navigate('/personel')}
           className="flex min-w-[52px] cursor-pointer flex-col items-center gap-[3px]"
         >
@@ -226,27 +252,6 @@ function PersonelNav() {
             style={{ color: onHome ? ACTIVE : INACTIVE }}
           >
             Kayıtlar
-          </span>
-        </button>
-        <button
-          type="button"
-          onClick={() => void navigate('/kayit/yeni')}
-          aria-label="Yeni Kayıt"
-          className="-mt-[14px] cursor-pointer"
-        >
-          <PlusFab size={48} />
-        </button>
-        <button
-          type="button"
-          onClick={() => void navigate('/ayarlar')}
-          className="flex min-w-[52px] cursor-pointer flex-col items-center gap-[3px]"
-        >
-          <UserIcon color={pathname.startsWith('/ayarlar') ? ACTIVE : INACTIVE} />
-          <span
-            className="text-[10px] font-semibold"
-            style={{ color: pathname.startsWith('/ayarlar') ? ACTIVE : INACTIVE }}
-          >
-            Profil
           </span>
         </button>
       </div>
@@ -263,6 +268,7 @@ function TopBar({ isPersonel }: { isPersonel: boolean }) {
   const unread = bildirimler.filter((b) => !b.read_at).length
   const items = isPersonel
     ? [
+        { to: '/istekler', label: 'İşlemler', icon: ListNavIcon, active: pathname.startsWith('/istek') },
         { to: '/personel', label: 'Kayıtlar', icon: DocIcon, active: pathname.startsWith('/personel') },
       ]
     : [

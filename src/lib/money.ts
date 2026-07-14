@@ -42,6 +42,13 @@ export function kurusToNumericString(kurus: number): string {
   return `${sign}${whole}.${frac.toString().padStart(2, '0')}`
 }
 
+/** Integer kuruş -> editable input string ("850" / "1250,50"). */
+export function kurusToInput(kurus: number): string {
+  return kurus % 100 === 0
+    ? String(Math.floor(kurus / 100))
+    : kurusToNumericString(kurus).replace('.', ',')
+}
+
 /** "1234.56" NUMERIC string from PostgREST -> integer kuruş. */
 export function numericStringToKurus(value: string | number): number {
   const s = String(value)

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router'
 import { useBusiness } from '../../app/providers/BusinessProvider'
 import { formatTL, numericStringToKurus } from '../../lib/money'
+import { isTelGenelComplete, normalizeTelGenel } from '../kayit/telefon'
 import { useCariIsletmeler, useCreateCari } from './api'
 import type { CariIsletme } from './types'
 import {
@@ -13,18 +14,24 @@ import {
   modalInputCls,
 } from './shared'
 
+/**
+ * Toplanmamış alacak (032 borç/ödeme modeli): Σ borç (GELIR) − Σ toplanan
+ * (kasa_durumu ≠ YOK — hem toplanan borçlar hem ödeme hareketleri).
+ * Reddedilen tahsilat YOK'a döner ve borç bakiyeye geri gelir.
+ */
 export function cariBakiyeKurus(ci: CariIsletme): number {
   let total = 0
   for (const h of ci.hareketler) {
     const kurus = numericStringToKurus(String(h.tutar))
-    total += h.tur === 'GELIR' ? kurus : -kurus
+    if (h.tur === 'GELIR') total += kurus
+    if (h.kasa_durumu !== 'YOK') total -= kurus
   }
   return total
 }
 
 export function bakiyeTag(bakiye: number): { label: string; color: string } {
   if (bakiye > 0) return { label: 'Alacağınız', color: '#15803D' }
-  if (bakiye < 0) return { label: 'Borcunuz', color: '#C62828' }
+  if (bakiye < 0) return { label: 'Fazla tahsilat', color: '#B45309' }
   return { label: 'Hesap kapalı', color: '#888888' }
 }
 
@@ -50,9 +57,10 @@ interface ModalState {
   open: boolean
   name: string
   note: string
+  telefon: string // ulusal 10 hane; +90 sabit (036)
 }
 
-const CLOSED: ModalState = { open: false, name: '', note: '' }
+const CLOSED: ModalState = { open: false, name: '', note: '', telefon: '' }
 
 export default function Isletmeler() {
   const navigate = useNavigate()
@@ -71,11 +79,16 @@ export default function Isletmeler() {
       setError('İşletme adı girin.')
       return
     }
+    if (modal.telefon && !isTelGenelComplete(modal.telefon)) {
+      setError('Telefon numarası eksik — 10 hane girin.')
+      return
+    }
     try {
       await createCari.mutateAsync({
         businessId,
         name: modal.name.trim(),
         note: modal.note.trim(),
+        telefon: modal.telefon,
       })
       setModal(CLOSED)
     } catch {
@@ -92,7 +105,7 @@ export default function Isletmeler() {
         backTo="/yonetim"
         onAdd={() => {
           setError('')
-          setModal({ open: true, name: '', note: '' })
+          setModal({ open: true, name: '', note: '', telefon: '' })
         }}
       />
 
@@ -168,6 +181,23 @@ export default function Isletmeler() {
             onChange={(e) => setModal((m) => ({ ...m, note: e.target.value }))}
             className={modalInputCls}
           />
+        </div>
+        <div>
+          <div className={modalFieldLabel}>TELEFON</div>
+          <div className="flex items-center rounded-[12px] bg-field px-[14px] py-[13px]">
+            <span className="shrink-0 text-[15px] font-semibold text-muted">+90</span>
+            <input
+              type="tel"
+              inputMode="numeric"
+              placeholder="___ ___ __ __"
+              value={modal.telefon}
+              onChange={(e) =>
+                setModal((m) => ({ ...m, telefon: normalizeTelGenel(e.target.value) }))
+              }
+              maxLength={10}
+              className="w-full min-w-0 border-none bg-transparent pl-2 text-[15px] text-ink outline-none placeholder:text-faint"
+            />
+          </div>
         </div>
       </FormModal>
     </div>

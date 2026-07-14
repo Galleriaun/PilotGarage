@@ -27,6 +27,15 @@ function getPosition(): Promise<GeolocationPosition> {
   })
 }
 
+function geoErrorText(err: unknown): string {
+  const code = (err as GeolocationPositionError | undefined)?.code
+  if (code === 1)
+    return 'Konum izni reddedildi — telefon ayarlarından tarayıcıya/uygulamaya konum izni verin'
+  if (code === 2) return 'Konum belirlenemedi — GPS sinyali alınamıyor'
+  if (code === 3) return 'Konum alınamadı (zaman aşımı) — tekrar deneyin'
+  return 'Konum alınamadı veya izin reddedildi'
+}
+
 function StepIcon({ state }: { state: StepState }) {
   if (state === 'run') {
     return (
@@ -82,6 +91,16 @@ export default function Mesai() {
     if (busy || !businessId) return
     setBusy(true)
     setSteps([])
+
+    // The permission prompt only appears while the tap gesture is still
+    // "live" (iOS home-screen PWAs enforce this strictly). Waiting for the
+    // IP check's network round-trip kills the gesture and geolocation is
+    // then rejected without ever asking — so the position request starts
+    // immediately on tap and its result is ignored if the office network
+    // check succeeds first.
+    const posPromise = 'geolocation' in navigator ? getPosition() : null
+    posPromise?.catch(() => {})
+
     try {
       push({ text: 'Ofis ağı (statik IP) kontrol ediliyor', state: 'run' })
       const ipOk = await checkMesaiIp(businessId)
@@ -94,7 +113,7 @@ export default function Mesai() {
       }
       replaceLast('ok', 'Ofis ağı bulunamadı, konum kullanılacak')
 
-      if (!('geolocation' in navigator)) {
+      if (!posPromise) {
         push({ text: 'Bu cihaz konum desteklemiyor', state: 'err' })
         return
       }
@@ -102,9 +121,9 @@ export default function Mesai() {
       push({ text: 'Konum alınıyor (izin isterse onaylayın)', state: 'run' })
       let pos: GeolocationPosition
       try {
-        pos = await getPosition()
-      } catch {
-        replaceLast('err', 'Konum alınamadı veya izin reddedildi')
+        pos = await posPromise
+      } catch (err) {
+        replaceLast('err', geoErrorText(err))
         return
       }
       replaceLast('ok', 'Konum alındı')

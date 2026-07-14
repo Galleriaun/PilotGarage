@@ -4,7 +4,7 @@ import { nextOccurrenceAfterISO } from '../../lib/dates'
 import { kurusToNumericString } from '../../lib/money'
 import type { Profile, Role } from '../../lib/types'
 import type { IslemTur } from '../finans/types'
-import type { CariIsletme, Member, PersonelOdeme } from './types'
+import type { CariIsletme, Istek, IstekTur, Member, PersonelOdeme } from './types'
 
 async function currentUserId(): Promise<string> {
   const { data } = await supabase.auth.getSession()
@@ -143,6 +143,79 @@ export function usePersonelOdemeler(profileId: string, businessId: string) {
       return data as PersonelOdeme[]
     },
     enabled: profileId !== '' && businessId !== '',
+  })
+}
+
+// ═══ İstekler (037) ══════════════════════════════════════════
+
+const ISTEK_SELECT = '*, profile:profiles!istekler_profile_id_fkey(full_name, role)'
+
+export function useIstekler(businessId: string) {
+  return useQuery({
+    queryKey: ['istekler', businessId],
+    queryFn: async (): Promise<Istek[]> => {
+      const { data, error } = await supabase
+        .from('istekler')
+        .select(ISTEK_SELECT)
+        .eq('business_id', businessId)
+        .order('created_at', { ascending: false })
+        .limit(200)
+      if (error) throw error
+      return data as unknown as Istek[]
+    },
+    enabled: businessId !== '',
+  })
+}
+
+/** Which türler have a BEKLIYOR istek — drives the red dots. */
+export function useBekleyenIstekTurleri(businessId: string) {
+  return useQuery({
+    queryKey: ['istekler-bekleyen', businessId],
+    queryFn: async (): Promise<Set<IstekTur>> => {
+      const { data, error } = await supabase
+        .from('istekler')
+        .select('tur')
+        .eq('business_id', businessId)
+        .eq('durum', 'BEKLIYOR')
+      if (error) throw error
+      return new Set((data as { tur: IstekTur }[]).map((r) => r.tur))
+    },
+    enabled: businessId !== '',
+  })
+}
+
+function useIstekMutation<TInput>(fn: (input: TInput) => Promise<void>) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: fn,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['istekler'] })
+      void queryClient.invalidateQueries({ queryKey: ['istekler-bekleyen'] })
+      // approved avans hits the kasa + personel history, exactly like Avans Ver
+      void queryClient.invalidateQueries({ queryKey: ['personel-odemeler'] })
+      void queryClient.invalidateQueries({ queryKey: ['islemler'] })
+    },
+  })
+}
+
+export function useApproveAvansIstek() {
+  return useIstekMutation(async ({ id }: { id: string }) => {
+    const { error } = await supabase.rpc('approve_avans_istek', { p_id: id })
+    if (error) throw error
+  })
+}
+
+export function useRejectAvansIstek() {
+  return useIstekMutation(async ({ id }: { id: string }) => {
+    const { error } = await supabase.rpc('reject_avans_istek', { p_id: id })
+    if (error) throw error
+  })
+}
+
+export function useAlindiIstek() {
+  return useIstekMutation(async ({ id }: { id: string }) => {
+    const { error } = await supabase.rpc('alindi_istek', { p_id: id })
+    if (error) throw error
   })
 }
 
@@ -324,24 +397,29 @@ function useCariMutation<TInput>(fn: (input: TInput) => Promise<void>) {
 }
 
 export function useCreateCari() {
-  return useCariMutation(async (input: { businessId: string; name: string; note: string }) => {
-    const { error } = await supabase.from('cari_isletmeler').insert({
-      business_id: input.businessId,
-      name: input.name,
-      note: input.note,
-    })
-    if (error) throw error
-  })
+  return useCariMutation(
+    async (input: { businessId: string; name: string; note: string; telefon: string }) => {
+      const { error } = await supabase.from('cari_isletmeler').insert({
+        business_id: input.businessId,
+        name: input.name,
+        note: input.note,
+        telefon: input.telefon,
+      })
+      if (error) throw error
+    },
+  )
 }
 
 export function useUpdateCari() {
-  return useCariMutation(async (input: { id: string; name: string; note: string }) => {
-    const { error } = await supabase
-      .from('cari_isletmeler')
-      .update({ name: input.name, note: input.note })
-      .eq('id', input.id)
-    if (error) throw error
-  })
+  return useCariMutation(
+    async (input: { id: string; name: string; note: string; telefon: string }) => {
+      const { error } = await supabase
+        .from('cari_isletmeler')
+        .update({ name: input.name, note: input.note, telefon: input.telefon })
+        .eq('id', input.id)
+      if (error) throw error
+    },
+  )
 }
 
 export function useDeleteCari() {
@@ -377,7 +455,7 @@ export function useAddHareket() {
             // cari name in the başlık so the rule is recognizable in the
             // Tekrarlanan İşlemler management list
             baslik: `${input.cariName} — ${
-              input.note || (input.tur === 'GELIR' ? 'Tahsilat' : 'Ödeme')
+              input.note || (input.tur === 'GELIR' ? 'Borç' : 'Ödeme')
             }`,
             siklik: 'AYLIK',
             // today's hareket covers the current period — schedule strictly after
@@ -416,7 +494,7 @@ export function useDeleteHareket() {
   })
 }
 
-/** "Kasaya Yansıt" — atomic RPC: pending işlem + hareket status BEKLIYOR. */
+/** Hareket "Ödeme Topla" — atomic RPC: pending kasa geliri + hareket BEKLIYOR. */
 export function useYansitHareket() {
   return useCariMutation(async (input: { hareketId: string }) => {
     const { error } = await supabase.rpc('yansit_cari_hareket', {
@@ -424,6 +502,21 @@ export function useYansitHareket() {
     })
     if (error) throw error
   })
+}
+
+/** Genel "Ödeme Topla" — atomic RPC (032): ödeme hareketi (bakiyeden düşer)
+ *  + pending kasa geliri; kasa Onay'a kadar etkilenmez. */
+export function useToplaOdeme() {
+  return useCariMutation(
+    async (input: { cariIsletmeId: string; kurus: number; note: string }) => {
+      const { error } = await supabase.rpc('topla_cari_odeme', {
+        p_cari: input.cariIsletmeId,
+        p_tutar: kurusToNumericString(input.kurus),
+        p_note: input.note,
+      })
+      if (error) throw error
+    },
+  )
 }
 
 // ═══ Sabit Giderler ═════════════════════════════════════════

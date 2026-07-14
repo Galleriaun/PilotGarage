@@ -5,7 +5,7 @@
 -- Everything happens inside one transaction that is ROLLED BACK at the
 -- end — no test data survives, safe to run on the live project.
 --
--- Prerequisite: migrations 001–028 applied. (Checks were written against
+-- Prerequisite: migrations 001–038 applied. (Checks were written against
 -- 001–013; the later migrations keep every asserted behavior — decided-row
 -- immutability now has RPC-only escape hatches that this file does not
 -- exercise, so all checks still pass unchanged.)
@@ -27,6 +27,7 @@
 --   • Kayıt silme goes through Onay (013): staff request, finance-only
 --     approve, flags RPC-only; deletion removes the pending gelir but
 --     decided gelirler survive detached (immutable kasa history)
+--   • Bildirim visibility re-checks the current role per type (031)
 --
 -- NOT covered here (needs the deployed app / dashboard):
 --   • Storage policies, PWA, cron firing, UI walkthrough per role.
@@ -466,6 +467,223 @@ begin
     raise exception 'FAIL: decided gelirler should survive detached, got %', n;
   end if;
   raise notice 'PASS 15: kayıt silme — kayıt + pending gelir deleted, decided gelirler stay as kasa history (013)';
+
+  -- ═══ 11) Bildirim görünürlüğü güncel rolü izler (031) ═══
+  -- Rows are targeted at creation, but visibility must re-check the CURRENT
+  -- role: a demoted account must not keep seeing finance/Yönetici bildirimler.
+
+  insert into notifications (profile_id, business_id, type, baslik)
+  values
+    (u_personel, null,     'UYELIK',      'RLS16'), -- Yönetici-only
+    (u_personel, v_servis, 'ONAY',        'RLS16'), -- finance-only
+    (u_personel, v_servis, 'KAYIT_SILME', 'RLS16'), -- finance-only
+    (u_personel, v_servis, 'KAYIT',       'RLS16'), -- own business -> visible
+    (u_personel, v_galeri, 'KAYIT',       'RLS16'), -- no membership -> hidden
+    (u_muhasebe, v_servis, 'ONAY',        'RLS16'), -- finance -> visible
+    (u_muhasebe, null,     'UYELIK',      'RLS16'); -- not Yönetici -> hidden
+
+  perform pg_temp.login(u_personel);
+  select count(*) into n from notifications where baslik = 'RLS16';
+  if n <> 1 then
+    raise exception 'FAIL: personel should see only the own-business KAYIT bildirim, got %', n;
+  end if;
+  perform pg_temp.logout();
+
+  perform pg_temp.login(u_muhasebe);
+  select count(*) into n from notifications where baslik = 'RLS16';
+  if n <> 1 then
+    raise exception 'FAIL: muhasebe should see ONAY but not UYELIK, got %', n;
+  end if;
+  perform pg_temp.logout();
+  raise notice 'PASS 16: bildirim görünürlüğü — tip başına güncel rol/erişim kontrolü (031)';
+
+  -- ═══ 12) Cari borç/ödeme modeli (032) ═══
+  -- Genel "Ödeme Topla": ödeme hareketi (GIDER, born BEKLIYOR) + pending
+  -- kasa GELİR'i atomik; reject YOK'a döndürür; yeniden toplama (yansıt)
+  -- her zaman kasa GELİR'i üretir.
+
+  perform pg_temp.login(u_muhasebe);
+  select topla_cari_odeme(v_cari, 99.50, 'Test ödeme') into v_islem_c1;
+  select tur::text || '/' || durum::text into v_durum from islemler where id = v_islem_c1;
+  if v_durum <> 'GELIR/BEKLIYOR' then
+    raise exception 'FAIL: topla_cari_odeme işlemi GELIR/BEKLIYOR olmalı, got %', v_durum;
+  end if;
+  select cari_hareket_id into v_hareket2 from islemler where id = v_islem_c1;
+  select tur::text || '/' || kasa_durumu::text into v_durum
+  from cari_hareketler where id = v_hareket2;
+  if v_durum <> 'GIDER/BEKLIYOR' then
+    raise exception 'FAIL: ödeme hareketi GIDER/BEKLIYOR olmalı, got %', v_durum;
+  end if;
+
+  perform reject_islem(v_islem_c1);
+  select kasa_durumu::text into v_durum from cari_hareketler where id = v_hareket2;
+  if v_durum <> 'YOK' then
+    raise exception 'FAIL: reddedilen ödeme YOK''a dönmeli, got %', v_durum;
+  end if;
+
+  -- yeniden topla: tahsilat her zaman kasa GELİR'idir (hareket tur'u ne olursa)
+  select yansit_cari_hareket(v_hareket2) into v_islem_c2;
+  select tur::text into v_durum from islemler where id = v_islem_c2;
+  if v_durum <> 'GELIR' then
+    raise exception 'FAIL: tahsilat işlemi GELIR olmalı, got %', v_durum;
+  end if;
+  perform approve_islem(v_islem_c2, null);
+  select kasa_durumu::text into v_durum from cari_hareketler where id = v_hareket2;
+  if v_durum <> 'YANSIDI' then
+    raise exception 'FAIL: onaylanan ödeme YANSIDI olmalı, got %', v_durum;
+  end if;
+  perform pg_temp.logout();
+  raise notice 'PASS 17: cari borç/ödeme — topla_cari_odeme + tahsilat her zaman GELİR (032)';
+
+  -- ═══ 13) Kredi kartı komisyonu (033) ═══
+  -- KK işlemin saklı komisyonu onayda ayrı bir born-ONAYLANDI gider üretir;
+  -- p_komisyon = 0 saklı komisyonu iptal eder.
+
+  perform pg_temp.login(u_muhasebe);
+  insert into islemler
+    (business_id, tur, tutar, baslik, kaynak, durum, created_by, odeme_yontemi, komisyon)
+  values
+    (v_servis, 'GELIR', 100.00, 'Komisyon testi', 'MANUEL', 'BEKLIYOR',
+     u_muhasebe, 'KREDI_KARTI', 5.00)
+  returning id into v_islem_c1;
+  perform approve_islem(v_islem_c1);
+  select count(*) into n from islemler
+  where business_id = v_servis and tur = 'GIDER' and durum = 'ONAYLANDI'
+    and tutar = 5.00 and baslik = 'Komisyon testi — bu işlemin komisyonu'
+    and odeme_yontemi = 'KREDI_KARTI';
+  if n <> 1 then raise exception 'FAIL: komisyon gideri oluşmadı (%)', n; end if;
+
+  insert into islemler
+    (business_id, tur, tutar, baslik, kaynak, durum, created_by, odeme_yontemi, komisyon)
+  values
+    (v_servis, 'GELIR', 50.00, 'Komisyon iptal testi', 'MANUEL', 'BEKLIYOR',
+     u_muhasebe, 'KREDI_KARTI', 2.00)
+  returning id into v_islem_c2;
+  perform approve_islem(v_islem_c2, null, 0);
+  select count(*) into n from islemler where baslik like 'Komisyon iptal testi — bu%';
+  if n <> 0 then raise exception 'FAIL: p_komisyon = 0 saklı komisyonu iptal etmedi'; end if;
+  perform pg_temp.logout();
+  raise notice 'PASS 18: KK komisyonu — onayda ayrı gider, 0 ile iptal (033)';
+
+  -- ═══ 14) Kayıt finans alanları yalnızca finans (034) ═══
+  -- Strip trigger: personelin INSERT'inde tutar/yöntem/komisyon sıfırlanır;
+  -- UPDATE'te eski (finans) değerlere sabitlenir. Gelir override değerlerle doğar.
+
+  perform pg_temp.login(u_personel);
+  insert into kayitlar
+    (business_id, plaka, musteri_adi, paket_id, durum, created_by, tutar, odeme_yontemi, komisyon)
+  values
+    (v_servis, '34 RLS 034', 'Strip Testi', v_paket, 'AKTIF', u_personel, 999.99, 'KREDI_KARTI', 10.00)
+  returning id into v_kayit;
+  perform pg_temp.logout();
+  select count(*) into n from kayitlar
+  where id = v_kayit and tutar is null and odeme_yontemi is null and komisyon is null;
+  if n <> 1 then
+    raise exception 'FAIL: personel kaydında finans alanları sıfırlanmadı (034)';
+  end if;
+
+  perform pg_temp.login(u_muhasebe);
+  update kayitlar
+  set tutar = 750.00, odeme_yontemi = 'KREDI_KARTI', komisyon = 15.00
+  where id = v_kayit;
+  perform pg_temp.logout();
+
+  perform pg_temp.login(u_personel);
+  update kayitlar
+  set tutar = null, odeme_yontemi = null, komisyon = null, musteri_adi = 'Değişti'
+  where id = v_kayit;
+  perform pg_temp.logout();
+  select count(*) into n from kayitlar
+  where id = v_kayit and tutar = 750.00 and odeme_yontemi = 'KREDI_KARTI'
+    and komisyon = 15.00 and musteri_adi = 'Değişti';
+  if n <> 1 then
+    raise exception 'FAIL: personel finans alanlarını değiştirebildi (034)';
+  end if;
+
+  perform pg_temp.login(u_muhasebe);
+  update kayitlar set durum = 'TAMAMLANDI' where id = v_kayit;
+  select count(*) into n from islemler
+  where kayit_id = v_kayit and durum = 'BEKLIYOR' and tutar = 750.00
+    and odeme_yontemi = 'KREDI_KARTI' and komisyon = 15.00;
+  if n <> 1 then
+    raise exception 'FAIL: gelir override tutar/yöntem/komisyonla doğmadı (034)';
+  end if;
+  perform pg_temp.logout();
+  raise notice 'PASS 19: kayıt finans alanları — strip trigger + override gelir (034)';
+
+  -- ═══ 15) İstekler (037) ═══
+  -- Personel kendi isteğini oluşturur; karar yalnızca finans RPC'leriyle —
+  -- client UPDATE yolu yok; onaylanan avans, Avans Ver ile birebir aynı doğar.
+
+  perform pg_temp.login(u_personel);
+  insert into istekler (business_id, profile_id, tur, tutar, metin)
+  values (v_servis, u_personel, 'AVANS', 500.00, 'Acil ihtiyaç')
+  returning id into v_kayit;
+  insert into istekler (business_id, profile_id, tur, metin)
+  values (v_servis, u_personel, 'SIKAYET', 'Test şikayet')
+  returning id into v_kayit2;
+
+  begin
+    update istekler set durum = 'ONAYLANDI' where id = v_kayit;
+    raise exception 'FAIL: istek durumu client''tan değiştirilebildi';
+  exception when others then
+    if sqlerrm like 'FAIL:%' then raise; end if; -- expected: update revoked
+  end;
+  begin
+    perform approve_avans_istek(v_kayit);
+    raise exception 'FAIL: personel kendi avans isteğini onaylayabildi';
+  exception when others then
+    if sqlerrm like 'FAIL:%' then raise; end if; -- expected: yetkiniz yok
+  end;
+  perform pg_temp.logout();
+
+  perform pg_temp.login(u_muhasebe);
+  select approve_avans_istek(v_kayit) into v_islem_c1;
+  select durum::text into v_durum from istekler where id = v_kayit;
+  if v_durum <> 'ONAYLANDI' then
+    raise exception 'FAIL: avans isteği ONAYLANDI olmadı (%)', v_durum;
+  end if;
+  select tur::text || '/' || durum::text || '/' || kaynak::text into v_durum
+  from islemler where id = v_islem_c1;
+  if v_durum <> 'GIDER/ONAYLANDI/PERSONEL' then
+    raise exception 'FAIL: avans gideri Avans Ver ile aynı doğmadı (%)', v_durum;
+  end if;
+  select count(*) into n from personel_odemeler
+  where islem_id = v_islem_c1 and tur = 'AVANS' and profile_id = u_personel;
+  if n <> 1 then raise exception 'FAIL: personel_odemeler AVANS satırı yok'; end if;
+
+  begin
+    perform alindi_istek(v_kayit); -- avans "alındı" ile kapatılamaz
+    raise exception 'FAIL: avans isteği alindi_istek ile kapatıldı';
+  exception when others then
+    if sqlerrm like 'FAIL:%' then raise; end if;
+  end;
+  perform alindi_istek(v_kayit2);
+  select durum::text into v_durum from istekler where id = v_kayit2;
+  if v_durum <> 'ALINDI' then
+    raise exception 'FAIL: şikayet ALINDI olmadı (%)', v_durum;
+  end if;
+  perform pg_temp.logout();
+  raise notice 'PASS 20: istekler — personel oluşturur, karar yalnızca finans RPC''leriyle (037)';
+
+  -- ═══ 16) Avans isteği maaş sınırı (038) ═══
+  -- (PASS 20'deki 500'lük istek maaş 0 iken kabul edildi = sınırsız hal.)
+
+  update business_members set maas = 300.00
+  where profile_id = u_personel and business_id = v_servis;
+
+  perform pg_temp.login(u_personel);
+  begin
+    insert into istekler (business_id, profile_id, tur, tutar)
+    values (v_servis, u_personel, 'AVANS', 500.00);
+    raise exception 'FAIL: maaştan büyük avans isteği kabul edildi';
+  exception when others then
+    if sqlerrm like 'FAIL:%' then raise; end if; -- expected: maaş sınırı
+  end;
+  insert into istekler (business_id, profile_id, tur, tutar)
+  values (v_servis, u_personel, 'AVANS', 200.00);
+  perform pg_temp.logout();
+  raise notice 'PASS 21: avans isteği maaş sınırı — maaş doluyken tavan, boşken sınırsız (038)';
 
   raise notice '';
   raise notice '=== ALL TESTS PASSED (rolling back — no test data persists) ===';

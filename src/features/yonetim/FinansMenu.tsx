@@ -11,7 +11,7 @@ import {
 
 function ClockIcon() {
   return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2A5BD7" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0D9488" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="12" cy="12" r="9" />
       <polyline points="12 7 12 12 15 14" />
     </svg>
@@ -51,7 +51,7 @@ const ITEMS = [
     path: '/yonetim/mesai',
     title: 'Mesai Kayıtları',
     subtitle: 'Personel giriş/çıkış saatleri',
-    iconBg: '#EEF4FF',
+    iconBg: '#F0FDFA',
     icon: <ClockIcon />,
   },
   {

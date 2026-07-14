@@ -64,9 +64,11 @@
   select {
     font: inherit;
   }
-  /* iOS Safari sizes date inputs to their intrinsic width, overflowing the
-     container — strip the native appearance and clamp them. */
-  input[type='date'] {
+  /* iOS Safari sizes date/time inputs to their intrinsic width, overflowing
+     the container — strip the native appearance and clamp them. */
+  input[type='date'],
+  input[type='datetime-local'],
+  input[type='time'] {
     -webkit-appearance: none;
     appearance: none;
     display: block;
@@ -74,8 +76,10 @@
     max-width: 100%;
     min-height: 1.5em;
   }
-  /* iOS centers the value inside date inputs by default */
-  input[type='date']::-webkit-date-and-time-value {
+  /* iOS centers the value inside date/time inputs by default */
+  input[type='date']::-webkit-date-and-time-value,
+  input[type='datetime-local']::-webkit-date-and-time-value,
+  input[type='time']::-webkit-date-and-time-value {
     text-align: left;
   }
 }

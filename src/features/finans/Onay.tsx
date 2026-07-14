@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router'
 import { useBusiness } from '../../app/providers/BusinessProvider'
 import ConfirmDialog from '../../components/ui/ConfirmDialog'
 import { formatCreatedStamp, formatRelativeDate } from '../../lib/dates'
-import { formatTL } from '../../lib/money'
+import { formatTL, kurusToNumericString, numericStringToKurus, parseTLToKurus } from '../../lib/money'
 import type { OdemeYontemi } from '../../lib/types'
 import { BackChevron } from '../auth/EyeIcon'
 import { amountLabel } from './TxCard'
@@ -45,6 +45,12 @@ const SOURCE_META: Record<IslemKaynak, { label: string; bg: string; color: strin
   PERSONEL: { label: 'Personel', bg: '#FEF3F2', color: '#C62828' },
 }
 
+const YONTEM_CHIP: Record<OdemeYontemi, { label: string; bg: string; color: string }> = {
+  NAKIT: { label: 'Nakit', bg: '#F0FDF4', color: '#15803D' },
+  KREDI_KARTI: { label: 'Kredi Kartı', bg: '#EEF4FF', color: '#2A5BD7' },
+  HAVALE: { label: 'Havale', bg: '#F5F0FF', color: '#7C3AED' },
+}
+
 function OnayCard({
   islem,
   onApprove,
@@ -53,13 +59,20 @@ function OnayCard({
   error,
 }: {
   islem: Islem
-  onApprove: (yontem: OdemeYontemi | null) => void
+  onApprove: (yontem: OdemeYontemi | null, komisyon: string) => void
   onReject: () => void
   busy: boolean
   error: string
 }) {
   const [yontem, setYontem] = useState<OdemeYontemi | null>(islem.odeme_yontemi)
+  // stored komisyon (manuel KK girişleri) pre-fills the input; tr decimal comma
+  const [komisyon, setKomisyon] = useState(
+    islem.komisyon != null ? String(islem.komisyon).replace('.', ',') : '',
+  )
   const source = SOURCE_META[islem.kaynak]
+  // Ödeme yöntemi baştan belliyse (finans kaydı / manuel giriş) Onay'da tekrar
+  // sorulmaz — yalnızca personel kaydı gibi yöntemsiz doğan işlemlerde seçilir.
+  const preset = islem.odeme_yontemi !== null
 
   return (
     <div className="rounded-[18px] border border-[#EDEDED] bg-white p-4 shadow-[0_1px_2px_rgba(0,0,0,0.03),0_4px_12px_rgba(0,0,0,0.04)]">
@@ -89,30 +102,69 @@ function OnayCard({
         <span className="whitespace-nowrap rounded-[8px] bg-field px-[10px] py-[5px] text-[11.5px] font-semibold text-[#666]">
           {islem.kategori?.label ?? 'Diğer'}
         </span>
+        {/* Yöntem baştan belliyse salt-okunur göster */}
+        {preset && islem.odeme_yontemi && (
+          <span
+            className="whitespace-nowrap rounded-[8px] px-[10px] py-[5px] text-[11.5px] font-bold"
+            style={{
+              background: YONTEM_CHIP[islem.odeme_yontemi].bg,
+              color: YONTEM_CHIP[islem.odeme_yontemi].color,
+            }}
+          >
+            {YONTEM_CHIP[islem.odeme_yontemi].label}
+          </span>
+        )}
+        {preset && islem.komisyon != null && (
+          <span className="whitespace-nowrap rounded-[8px] bg-field px-[10px] py-[5px] text-[11.5px] font-semibold text-[#666]">
+            Komisyon {formatTL(numericStringToKurus(islem.komisyon))}
+          </span>
+        )}
       </div>
 
-      {/* Ödeme yöntemi — required for KAYIT-sourced entries, per owner decision */}
-      <div className="mt-3 flex gap-2">
-        {(['NAKIT', 'KREDI_KARTI', 'HAVALE'] as const).map((y) => {
-          const selected = yontem === y
-          return (
-            <button
-              key={y}
-              type="button"
-              onClick={() => setYontem(y)}
-              disabled={busy}
-              className="flex-1 cursor-pointer rounded-[10px] border-[1.5px] py-2 text-center text-xs font-semibold disabled:opacity-60"
-              style={{
-                background: selected ? 'var(--seg-on)' : 'var(--seg)',
-                borderColor: selected ? 'var(--seg-on)' : 'var(--color-inputline)',
-                color: selected ? 'var(--seg-fg-on)' : 'var(--seg-fg)',
-              }}
-            >
-              {ODEME_YONTEMI_LABELS[y]}
-            </button>
-          )
-        })}
-      </div>
+      {/* Ödeme yöntemi — yalnızca yöntemsiz doğan işlemlerde sorulur (personel kaydı) */}
+      {!preset && (
+        <div className="mt-3 flex gap-2">
+          {(['NAKIT', 'KREDI_KARTI', 'HAVALE'] as const).map((y) => {
+            const selected = yontem === y
+            return (
+              <button
+                key={y}
+                type="button"
+                onClick={() => setYontem(y)}
+                disabled={busy}
+                className="flex-1 cursor-pointer rounded-[10px] border-[1.5px] py-2 text-center text-xs font-semibold disabled:opacity-60"
+                style={{
+                  background: selected ? 'var(--seg-on)' : 'var(--seg)',
+                  borderColor: selected ? 'var(--seg-on)' : 'var(--color-inputline)',
+                  color: selected ? 'var(--seg-fg-on)' : 'var(--seg-fg)',
+                }}
+              >
+                {ODEME_YONTEMI_LABELS[y]}
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      {/* KK komisyonu (033): onayda ayrı gider olarak düşülür */}
+      {!preset && yontem === 'KREDI_KARTI' && (
+        <div className="mt-2">
+          <input
+            type="text"
+            inputMode="decimal"
+            placeholder="Komisyon (₺) — isteğe bağlı"
+            value={komisyon}
+            onChange={(e) => setKomisyon(e.target.value)}
+            disabled={busy}
+            className="w-full rounded-[10px] border-none bg-field px-[12px] py-[9px] text-[13px] text-ink outline-none placeholder:text-faint disabled:opacity-60"
+          />
+          {komisyon.trim() !== '' && (
+            <p className="mt-1 text-[11px] leading-relaxed text-faint">
+              Onayda komisyon kasadan ayrı bir gider olarak düşülür.
+            </p>
+          )}
+        </div>
+      )}
 
       {error && <p className="mt-3 text-center text-[13px] text-danger">{error}</p>}
 
@@ -127,7 +179,7 @@ function OnayCard({
         </button>
         <button
           type="button"
-          onClick={() => onApprove(yontem)}
+          onClick={() => onApprove(yontem, komisyon)}
           disabled={busy}
           className="flex-1 cursor-pointer rounded-[12px] bg-[#1F2937] py-[11px] text-center text-sm font-semibold text-white disabled:opacity-60"
         >
@@ -233,15 +285,47 @@ export default function Onay() {
     setErrors((e) => ({ ...e, [id]: msg }))
   }
 
-  async function onApprove(islem: Islem, yontem: OdemeYontemi | null) {
+  async function onApprove(islem: Islem, yontem: OdemeYontemi | null, komisyonStr: string) {
     setCardError(islem.id, '')
+    // Yöntem baştan belliyse (finans kaydı / manuel) doğrudan onayla; RPC saklı
+    // yöntem ve komisyona düşer (033). Onay'da yöntem tekrar seçilmez.
+    if (islem.odeme_yontemi !== null) {
+      setBusyId(islem.id)
+      try {
+        await approve.mutateAsync({ islemId: islem.id, odemeYontemi: null, komisyon: null })
+      } catch {
+        setCardError(islem.id, 'Onaylanamadı. Tekrar deneyin.')
+      } finally {
+        setBusyId(null)
+      }
+      return
+    }
     if (islem.kaynak === 'KAYIT' && !yontem) {
       setCardError(islem.id, 'Onaylamak için ödeme yöntemi seçin.')
       return
     }
+    // KK komisyonu: boş bırakılan input '0' gönderir — saklı komisyonu da
+    // iptal eder (RPC'de 0 = komisyon yok); yöntem KK değilse hiç gönderilmez
+    let komisyon: string | null = null
+    if (yontem === 'KREDI_KARTI') {
+      if (komisyonStr.trim() === '') {
+        komisyon = '0'
+      } else {
+        const k = parseTLToKurus(komisyonStr)
+        if (k === null || k < 0) {
+          setCardError(islem.id, 'Geçerli bir komisyon girin.')
+          return
+        }
+        if (k >= islem.kurus) {
+          setCardError(islem.id, 'Komisyon, işlem tutarından küçük olmalıdır.')
+          return
+        }
+        komisyon = kurusToNumericString(k)
+      }
+    }
     setBusyId(islem.id)
     try {
-      await approve.mutateAsync({ islemId: islem.id, odemeYontemi: yontem })
+      await approve.mutateAsync({ islemId: islem.id, odemeYontemi: yontem, komisyon })
     } catch {
       setCardError(islem.id, 'Onaylanamadı. Tekrar deneyin.')
     } finally {
@@ -456,7 +540,7 @@ export default function Onay() {
               islem={islem}
               busy={busyId === islem.id}
               error={errors[islem.id] ?? ''}
-              onApprove={(yontem) => void onApprove(islem, yontem)}
+              onApprove={(yontem, komisyon) => void onApprove(islem, yontem, komisyon)}
               onReject={() => setRejecting(islem)}
             />
           ))}

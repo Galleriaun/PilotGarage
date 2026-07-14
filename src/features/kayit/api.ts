@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
 import { compressPhoto } from '../../lib/image'
-import type { Kayit, KayitDurum, KayitFields, Paket } from './types'
+import type { Kayit, KayitDurum, KayitFields, KayitFinansAlanlari, Paket } from './types'
 
 // gelirler: RLS hides islemler from Personel — the embed just comes back
 // empty for them, which is fine (the Onay label is a finance-only feature).
@@ -117,18 +117,21 @@ export interface CreateKayitInput {
   fields: KayitFields
   durum: KayitDurum
   photos: File[]
+  /** Finance-only extras (034); the DB strip trigger nulls these for non-finance. */
+  finans?: KayitFinansAlanlari
 }
 
 export function useCreateKayit() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async ({ businessId, fields, durum, photos }: CreateKayitInput) => {
+    mutationFn: async ({ businessId, fields, durum, photos, finans }: CreateKayitInput) => {
       const uid = await currentUserId()
       const { data, error } = await supabase
         .from('kayitlar')
         .insert({
           business_id: businessId,
           ...fields,
+          ...(finans ?? {}),
           plaka: fields.plaka.trim().toUpperCase(),
           durum,
           created_by: uid,
@@ -157,10 +160,18 @@ export function useCreateKayit() {
 export function useUpdateKayit() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async ({ id, fields }: { id: string; fields: KayitFields }) => {
+    mutationFn: async ({
+      id,
+      fields,
+      finans,
+    }: {
+      id: string
+      fields: KayitFields
+      finans?: KayitFinansAlanlari
+    }) => {
       const { error } = await supabase
         .from('kayitlar')
-        .update({ ...fields, plaka: fields.plaka.trim().toUpperCase() })
+        .update({ ...fields, ...(finans ?? {}), plaka: fields.plaka.trim().toUpperCase() })
         .eq('id', id)
       if (error) throw error
     },

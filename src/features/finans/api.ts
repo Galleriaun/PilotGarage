@@ -168,6 +168,9 @@ export interface AddIslemInput {
   odemeYontemi: OdemeYontemi
   /** 0 = Bir Kez; 1–28 = her ay o gün otomatik (AYLIK rule + today's işlem) */
   odemeGunu: number
+  /** KREDI_KARTI only (033): deducted as a separate gider on approval;
+   *  a recurring rule repeats the deduction every period. */
+  komisyonKurus: number | null
 }
 
 export function useAddIslem() {
@@ -191,6 +194,10 @@ export function useAddIslem() {
             // today's işlem covers the current period — schedule strictly after
             next_run: nextOccurrenceAfterISO(input.odemeGunu),
             created_by: uid,
+            // the cron copies the yöntem and repeats the KK komisyonu (033)
+            odeme_yontemi: input.odemeYontemi,
+            komisyon:
+              input.komisyonKurus !== null ? kurusToNumericString(input.komisyonKurus) : null,
           })
           .select('id')
           .single()
@@ -210,6 +217,8 @@ export function useAddIslem() {
         created_by: uid,
         odeme_yontemi: input.odemeYontemi,
         tekrar_kural_id: tekrarKuralId,
+        komisyon:
+          input.komisyonKurus !== null ? kurusToNumericString(input.komisyonKurus) : null,
       })
       if (islemError) {
         // compensate: never leave an orphaned recurring rule that the cron
@@ -233,13 +242,17 @@ export function useApproveIslem() {
     mutationFn: async ({
       islemId,
       odemeYontemi,
+      komisyon,
     }: {
       islemId: string
       odemeYontemi: OdemeYontemi | null
+      /** numeric string (₺); '0' cancels a stored komisyon; null keeps it */
+      komisyon: string | null
     }) => {
       const { error } = await supabase.rpc('approve_islem', {
         p_islem_id: islemId,
         p_odeme_yontemi: odemeYontemi,
+        p_komisyon: komisyon,
       })
       if (error) throw error
     },

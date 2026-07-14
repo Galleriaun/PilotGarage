@@ -29,6 +29,7 @@ const Yonetim = lazy(() => import('./features/finans/Yonetim'))
 const Paketler = lazy(() => import('./features/yonetim/Paketler'))
 const PersonelList = lazy(() => import('./features/yonetim/PersonelList'))
 const PersonelDetay = lazy(() => import('./features/yonetim/PersonelDetay'))
+const Istekler = lazy(() => import('./features/yonetim/Istekler'))
 const Isletmeler = lazy(() => import('./features/yonetim/Isletmeler'))
 const IsletmeDetay = lazy(() => import('./features/yonetim/IsletmeDetay'))
 const SabitGiderler = lazy(() => import('./features/yonetim/SabitGiderler'))
@@ -37,6 +38,8 @@ const Bildirimler = lazy(() => import('./features/settings/Bildirimler'))
 const Ayarlar = lazy(() => import('./features/settings/Ayarlar'))
 const Cop = lazy(() => import('./features/settings/Cop'))
 const Mesai = lazy(() => import('./features/mesai/Mesai'))
+const Islemler = lazy(() => import('./features/istek/Islemler'))
+const Isteklerim = lazy(() => import('./features/istek/Isteklerim'))
 const MesaiKayitlari = lazy(() => import('./features/mesai/MesaiKayitlari'))
 const MesaiPersonelDetay = lazy(() => import('./features/mesai/MesaiPersonelDetay'))
 
@@ -64,6 +67,8 @@ export default function App() {
                   <Route path="/bildirimler" element={<Bildirimler />} />
                   <Route path="/ayarlar" element={<Ayarlar />} />
                   <Route path="/mesai" element={<Mesai />} />
+                  <Route path="/istekler" element={<Islemler />} />
+                  <Route path="/isteklerim" element={<Isteklerim />} />
                   <Route element={<RequireRole roles={['YONETICI', 'MUHASEBE']} />}>
                     <Route path="/yonetici" element={<YoneticiHome />} />
                     <Route path="/yonetim" element={<Yonetim />} />
@@ -72,6 +77,7 @@ export default function App() {
                     <Route path="/yonetim/paketler" element={<Paketler />} />
                     <Route path="/yonetim/personel" element={<PersonelList />} />
                     <Route path="/yonetim/personel/:id" element={<PersonelDetay />} />
+                    <Route path="/yonetim/istekler" element={<Istekler />} />
                     <Route path="/yonetim/isletmeler" element={<Isletmeler />} />
                     <Route path="/yonetim/isletmeler/:id" element={<IsletmeDetay />} />
                     <Route path="/yonetim/sabit-giderler" element={<SabitGiderler />} />

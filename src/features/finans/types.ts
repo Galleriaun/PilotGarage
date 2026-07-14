@@ -26,6 +26,8 @@ export interface Islem {
   durum: IslemDurum
   islem_tarihi: string // YYYY-MM-DD
   odeme_yontemi: OdemeYontemi | null
+  /** KK komisyonu (033): pending rows carry it until approval deducts it. */
+  komisyon: number | string | null
   /** CARI_HESAP işlem with NULL here = its işletme was deleted (015). */
   cari_hareket_id: string | null
   created_at: string

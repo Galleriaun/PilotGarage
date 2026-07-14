@@ -38,6 +38,9 @@ export default defineConfig({
         // App shell + fonts precached; Supabase stays network-only (no
         // runtimeCaching on purpose — finance data must never be stale).
         globPatterns: ['**/*.{js,css,html,woff2,png}'],
+        // Activation still waits for the user's Güncelle (prompt mode);
+        // claiming on activation lets controllerchange drive the reload.
+        clientsClaim: true,
         navigateFallback: '/PilotGarage/index.html',
         // Web Push handlers (public/push-sw.js) ride inside the generated SW
         importScripts: ['push-sw.js'],

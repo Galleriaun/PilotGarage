@@ -5,13 +5,14 @@ import ConfirmDialog from '../../components/ui/ConfirmDialog'
 import { formatTL, numericStringToKurus, parseTLToKurus } from '../../lib/money'
 import { formatRelativeDate } from '../../lib/dates'
 import { BackChevron } from '../auth/EyeIcon'
-import type { IslemTur } from '../finans/types'
-import { CalendarIcon } from '../kayit/icons'
+import { CalendarIcon, PhoneIcon } from '../kayit/icons'
+import { formatTelDisplay, isTelGenelComplete, normalizeTelGenel, telHref } from '../kayit/telefon'
 import {
   useAddHareket,
   useCariIsletme,
   useDeleteCari,
   useDeleteHareket,
+  useToplaOdeme,
   useUpdateCari,
   useYansitHareket,
 } from './api'
@@ -57,18 +58,27 @@ export default function IsletmeDetay() {
   const { data: isletme, isPending, isError } = useCariIsletme(id)
   const addHareket = useAddHareket()
   const yansit = useYansitHareket()
+  const toplaOdeme = useToplaOdeme()
   const updateCari = useUpdateCari()
   const deleteHareket = useDeleteHareket()
   const deleteCari = useDeleteCari()
 
-  const [modal, setModal] = useState<{
+  // Borç Ekle — alacak hareketi; TEKRAR = her ay otomatik borç (0 = tek sefer)
+  const [borcModal, setBorcModal] = useState<{
     open: boolean
-    tur: IslemTur
     tutar: string
     note: string
-    gun: number // 0 = tek sefer, 1–28 = her ay o gün otomatik
-  }>({ open: false, tur: 'GELIR', tutar: '', note: '', gun: 0 })
+    gun: number
+  }>({ open: false, tutar: '', note: '', gun: 0 })
   const [error, setError] = useState('')
+
+  // Genel Ödeme Topla — bakiyeden düşer, kasa geliri olarak Onay'a gider
+  const [odemeModal, setOdemeModal] = useState<{ open: boolean; tutar: string; note: string }>({
+    open: false,
+    tutar: '',
+    note: '',
+  })
+  const [odemeError, setOdemeError] = useState('')
   const [yansitError, setYansitError] = useState('')
   const [yansitBusyId, setYansitBusyId] = useState<string | null>(null)
 
@@ -81,11 +91,12 @@ export default function IsletmeDetay() {
     end: '',
   })
 
-  const [editModal, setEditModal] = useState<{ open: boolean; name: string; note: string }>({
-    open: false,
-    name: '',
-    note: '',
-  })
+  const [editModal, setEditModal] = useState<{
+    open: boolean
+    name: string
+    note: string
+    telefon: string // ulusal 10 hane; +90 sabit (036)
+  }>({ open: false, name: '', note: '', telefon: '' })
   const [editError, setEditError] = useState('')
 
   const [delModal, setDelModal] = useState<{ open: boolean; text: string }>({
@@ -138,12 +149,14 @@ export default function IsletmeDetay() {
 
   const bakiye = cariBakiyeKurus(isletme)
   const tag = bakiyeTag(bakiye)
-  let gelirTotal = 0
-  let giderTotal = 0
+  // Toplam borç = tüm borç hareketleri; toplam tahsilat = ödeme toplanan
+  // her hareket (kasa_durumu ≠ YOK). Bakiye = borç − tahsilat.
+  let toplamBorc = 0
+  let toplamTahsilat = 0
   for (const h of isletme.hareketler) {
     const kurus = numericStringToKurus(String(h.tutar))
-    if (h.tur === 'GELIR') gelirTotal += kurus
-    else giderTotal += kurus
+    if (h.tur === 'GELIR') toplamBorc += kurus
+    if (h.kasa_durumu !== 'YOK') toplamTahsilat += kurus
   }
 
   // filters narrow the HAREKETLER list only — the cari özet stays whole-account
@@ -156,9 +169,9 @@ export default function IsletmeDetay() {
       (!range || (h.tarih >= range.start && h.tarih <= range.end)),
   )
 
-  async function onSaveHareket() {
+  async function onSaveBorc() {
     setError('')
-    const kurus = parseTLToKurus(modal.tutar)
+    const kurus = parseTLToKurus(borcModal.tutar)
     if (kurus === null || kurus <= 0) {
       setError('Geçerli bir tutar girin.')
       return
@@ -169,14 +182,33 @@ export default function IsletmeDetay() {
         cariIsletmeId: id,
         businessId: isletme.business_id,
         cariName: isletme.name,
-        tur: modal.tur,
+        tur: 'GELIR', // borç = alacağımız
         kurus,
-        note: modal.note.trim(),
-        odemeGunu: modal.gun,
+        note: borcModal.note.trim(),
+        odemeGunu: borcModal.gun,
       })
-      setModal((m) => ({ ...m, open: false }))
+      setBorcModal((m) => ({ ...m, open: false }))
     } catch {
       setError('Kaydedilemedi. Tekrar deneyin.')
+    }
+  }
+
+  async function onToplaOdeme() {
+    setOdemeError('')
+    const kurus = parseTLToKurus(odemeModal.tutar)
+    if (kurus === null || kurus <= 0) {
+      setOdemeError('Geçerli bir tutar girin.')
+      return
+    }
+    try {
+      await toplaOdeme.mutateAsync({
+        cariIsletmeId: id,
+        kurus,
+        note: odemeModal.note.trim(),
+      })
+      setOdemeModal((m) => ({ ...m, open: false }))
+    } catch {
+      setOdemeError('Kaydedilemedi. Tekrar deneyin.')
     }
   }
 
@@ -186,7 +218,7 @@ export default function IsletmeDetay() {
     try {
       await yansit.mutateAsync({ hareketId })
     } catch {
-      setYansitError('Kasaya yansıtılamadı. Tekrar deneyin.')
+      setYansitError('Ödeme toplanamadı. Tekrar deneyin.')
     } finally {
       setYansitBusyId(null)
     }
@@ -224,7 +256,7 @@ export default function IsletmeDetay() {
     }
     setYansitAllBusy(false)
     if (failed > 0) {
-      setYansitAllError(`${failed} hareket yansıtılamadı. Tekrar deneyin.`)
+      setYansitAllError(`${failed} hareket için ödeme toplanamadı. Tekrar deneyin.`)
     } else {
       setYansitAllOpen(false)
     }
@@ -236,11 +268,16 @@ export default function IsletmeDetay() {
       setEditError('İşletme adı girin.')
       return
     }
+    if (editModal.telefon && !isTelGenelComplete(editModal.telefon)) {
+      setEditError('Telefon numarası eksik — 10 hane girin.')
+      return
+    }
     try {
       await updateCari.mutateAsync({
         id,
         name: editModal.name.trim(),
         note: editModal.note.trim(),
+        telefon: editModal.telefon,
       })
       setEditModal((m) => ({ ...m, open: false }))
     } catch {
@@ -268,13 +305,32 @@ export default function IsletmeDetay() {
             {isletme.name}
           </h1>
           <div className="mt-[2px] truncate text-sm text-muted">{isletme.note || '—'}</div>
+          {isTelGenelComplete(isletme.telefon) && (
+            <div className="mt-[2px] truncate text-sm text-muted">
+              {formatTelDisplay(isletme.telefon)}
+            </div>
+          )}
         </div>
+        {isTelGenelComplete(isletme.telefon) && (
+          <a
+            href={telHref(isletme.telefon)}
+            aria-label="İşletmeyi ara"
+            className="pressable flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-[10px] bg-success"
+          >
+            <PhoneIcon size={15} color="#fff" />
+          </a>
+        )}
         <button
           type="button"
           aria-label="İşletmeyi düzenle"
           onClick={() => {
             setEditError('')
-            setEditModal({ open: true, name: isletme.name, note: isletme.note })
+            setEditModal({
+              open: true,
+              name: isletme.name,
+              note: isletme.note,
+              telefon: isletme.telefon,
+            })
           }}
           className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-[10px] bg-field"
         >
@@ -307,34 +363,40 @@ export default function IsletmeDetay() {
           <div className="my-4 h-px bg-divider" />
           <div className="flex gap-4">
             <div className="min-w-0 flex-1">
-              <div className="mb-[5px] text-xs text-muted">Toplam gelir</div>
-              <div className="text-lg font-bold text-success">{formatTL(gelirTotal)}</div>
+              <div className="mb-[5px] text-xs text-muted">Toplam borç</div>
+              <div className="text-lg font-bold text-danger">{formatTL(toplamBorc)}</div>
             </div>
             <div className="min-w-0 flex-1">
-              <div className="mb-[5px] text-xs text-muted">Toplam gider</div>
-              <div className="text-lg font-bold text-danger">{formatTL(giderTotal)}</div>
+              <div className="mb-[5px] text-xs text-muted">Toplam tahsilat</div>
+              <div className="text-lg font-bold text-success">{formatTL(toplamTahsilat)}</div>
             </div>
           </div>
         </div>
 
-        {/* Gelir Ekle / Gider Ekle */}
+        {/* Borç Ekle / Ödeme Topla */}
         <div className="flex gap-[10px]">
-          {(['GELIR', 'GIDER'] as const).map((tur) => (
-            <button
-              key={tur}
-              type="button"
-              onClick={() => {
-                setError('')
-                setModal({ open: true, tur, tutar: '', note: '', gun: 0 })
-              }}
-              className="pressable flex flex-1 cursor-pointer items-center justify-center gap-[6px] whitespace-nowrap rounded-[13px] bg-card px-1 py-[13px]"
-            >
-              <PlusInkIcon />
-              <span className="text-[13.5px] font-semibold text-ink">
-                {tur === 'GELIR' ? 'Gelir Ekle' : 'Gider Ekle'}
-              </span>
-            </button>
-          ))}
+          <button
+            type="button"
+            onClick={() => {
+              setError('')
+              setBorcModal({ open: true, tutar: '', note: '', gun: 0 })
+            }}
+            className="pressable flex flex-1 cursor-pointer items-center justify-center gap-[6px] whitespace-nowrap rounded-[13px] bg-card px-1 py-[13px]"
+          >
+            <PlusInkIcon />
+            <span className="text-[13.5px] font-semibold text-ink">Borç Ekle</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setOdemeError('')
+              setOdemeModal({ open: true, tutar: '', note: '' })
+            }}
+            className="pressable flex flex-1 cursor-pointer items-center justify-center gap-[6px] whitespace-nowrap rounded-[13px] bg-card px-1 py-[13px]"
+          >
+            <PlusInkIcon />
+            <span className="text-[13.5px] font-semibold text-ink">Ödeme Topla</span>
+          </button>
         </div>
 
         {/* Hareketler */}
@@ -344,7 +406,7 @@ export default function IsletmeDetay() {
             {(
               [
                 { yok: false, label: 'Tümü' },
-                { yok: true, label: 'Yansıtılmamış' },
+                { yok: true, label: 'Toplanmamış' },
               ] as const
             ).map((f) => {
               const selected = yansitilmamis === f.yok
@@ -413,15 +475,16 @@ export default function IsletmeDetay() {
                     <div className="flex items-center justify-between gap-3">
                       <div className="min-w-0">
                         <div className="truncate text-sm font-semibold text-ink">
-                          {h.note || (h.tur === 'GELIR' ? 'Gelir' : 'Gider')}
+                          {h.note || (h.tur === 'GELIR' ? 'Borç' : 'Ödeme')}
                         </div>
                         <div className="mt-[2px] text-xs text-muted">
                           {formatRelativeDate(h.tarih)}
                         </div>
                       </div>
+                      {/* borç = kırmızı +, ödeme = yeşil − (bakiyeden düşer) */}
                       <div
                         className="shrink-0 text-[15px] font-bold"
-                        style={{ color: h.tur === 'GELIR' ? '#15803D' : '#C62828' }}
+                        style={{ color: h.tur === 'GELIR' ? '#C62828' : '#15803D' }}
                       >
                         {h.tur === 'GELIR' ? '+' : '-'}
                         {formatTL(kurus)}
@@ -443,7 +506,7 @@ export default function IsletmeDetay() {
                           disabled={yansitBusyId === h.id}
                           className="cursor-pointer rounded-[9px] bg-ink px-3 py-[7px] text-xs font-semibold text-white disabled:opacity-60"
                         >
-                          {yansitBusyId === h.id ? 'Gönderiliyor…' : 'Kasaya Yansıt'}
+                          {yansitBusyId === h.id ? 'Gönderiliyor…' : 'Ödeme Topla'}
                         </button>
                       </div>
                     )}
@@ -457,7 +520,7 @@ export default function IsletmeDetay() {
                     {h.kasa_durumu === 'YANSIDI' && (
                       <div className="mt-2 flex justify-end">
                         <span className="rounded-[8px] bg-success-soft px-3 py-[6px] text-xs font-semibold text-success">
-                          ✓ Kasaya yansıdı
+                          ✓ Tahsil edildi
                         </span>
                       </div>
                     )}
@@ -467,7 +530,7 @@ export default function IsletmeDetay() {
             </div>
           )}
 
-          {/* Tümünü Yansıt — visible on the Yansıtılmamış filter */}
+          {/* Tümünü Topla — visible on the Toplanmamış filter */}
           {yansitilmamis && hareketler.length > 0 && (
             <div className="mt-3 flex justify-center">
               <button
@@ -478,7 +541,7 @@ export default function IsletmeDetay() {
                 }}
                 className="pressable cursor-pointer rounded-[12px] bg-ink px-5 py-[10px] text-[13px] font-semibold text-white"
               >
-                Tümünü Yansıt ({hareketler.length})
+                Tümünü Topla ({hareketler.length})
               </button>
             </div>
           )}
@@ -487,13 +550,13 @@ export default function IsletmeDetay() {
       <div className="h-10" />
 
       <FormModal
-        open={modal.open}
-        title={modal.tur === 'GELIR' ? 'Gelir Ekle' : 'Gider Ekle'}
+        open={borcModal.open}
+        title="Borç Ekle"
         error={error}
         busy={addHareket.isPending}
-        confirmColor={modal.tur === 'GELIR' ? '#15803D' : '#C62828'}
-        onConfirm={() => void onSaveHareket()}
-        onClose={() => setModal((m) => ({ ...m, open: false }))}
+        confirmColor="#C62828"
+        onConfirm={() => void onSaveBorc()}
+        onClose={() => setBorcModal((m) => ({ ...m, open: false }))}
       >
         <div>
           <div className={modalFieldLabel}>TUTAR (₺)</div>
@@ -501,8 +564,8 @@ export default function IsletmeDetay() {
             type="text"
             inputMode="decimal"
             placeholder="0"
-            value={modal.tutar}
-            onChange={(e) => setModal((m) => ({ ...m, tutar: e.target.value }))}
+            value={borcModal.tutar}
+            onChange={(e) => setBorcModal((m) => ({ ...m, tutar: e.target.value }))}
             className={modalInputCls}
           />
         </div>
@@ -510,26 +573,66 @@ export default function IsletmeDetay() {
           <div className={modalFieldLabel}>AÇIKLAMA</div>
           <input
             type="text"
-            value={modal.note}
-            onChange={(e) => setModal((m) => ({ ...m, note: e.target.value }))}
+            value={borcModal.note}
+            onChange={(e) => setBorcModal((m) => ({ ...m, note: e.target.value }))}
             className={modalInputCls}
           />
         </div>
         <div>
           <div className={modalFieldLabel}>TEKRAR</div>
           <GunDropdown
-            value={modal.gun}
-            onChange={(gun) => setModal((m) => ({ ...m, gun }))}
+            value={borcModal.gun}
+            onChange={(gun) => setBorcModal((m) => ({ ...m, gun }))}
             allowManual
             zeroLabel="Yok (tek sefer)"
           />
-          {modal.gun > 0 && (
+          {borcModal.gun > 0 && (
             <p className="mt-[6px] text-xs leading-relaxed text-faint">
-              Her ayın {modal.gun}. günü aynı hareket cari hesaba otomatik eklenir — kasaya
-              yansıtmak yine onayınıza bağlı kalır.
+              Her ayın {borcModal.gun}. günü aynı borç cari hesaba otomatik eklenir — ödeme
+              toplamak yine onayınıza bağlı kalır.
             </p>
           )}
         </div>
+        <p className="text-xs leading-relaxed text-faint">
+          Borç yalnızca cari hesaba işlenir; kasa etkilenmez.
+        </p>
+      </FormModal>
+
+      {/* Genel Ödeme Topla — bakiyeden düşer, kasa geliri olarak Onay'a gider */}
+      <FormModal
+        open={odemeModal.open}
+        title="Ödeme Topla"
+        error={odemeError}
+        busy={toplaOdeme.isPending}
+        confirmLabel="Topla"
+        confirmColor="#15803D"
+        onConfirm={() => void onToplaOdeme()}
+        onClose={() => setOdemeModal((m) => ({ ...m, open: false }))}
+      >
+        <div>
+          <div className={modalFieldLabel}>TUTAR (₺)</div>
+          <input
+            type="text"
+            inputMode="decimal"
+            placeholder="0"
+            value={odemeModal.tutar}
+            onChange={(e) => setOdemeModal((m) => ({ ...m, tutar: e.target.value }))}
+            className={modalInputCls}
+          />
+        </div>
+        <div>
+          <div className={modalFieldLabel}>AÇIKLAMA</div>
+          <input
+            type="text"
+            value={odemeModal.note}
+            onChange={(e) => setOdemeModal((m) => ({ ...m, note: e.target.value }))}
+            className={modalInputCls}
+          />
+        </div>
+        <p className="text-xs leading-relaxed text-faint">
+          Tutar cari hesaptan düşülür ve kasa geliri olarak onay kuyruğuna gönderilir —
+          kasa, Onay bölümünde onaylanana kadar etkilenmez.
+        </p>
       </FormModal>
 
       {/* Hareket silme onayı — only YOK hareketler are deletable (RLS-enforced) */}
@@ -538,7 +641,7 @@ export default function IsletmeDetay() {
         title="Hareketi sil"
         message={
           deleting
-            ? `${deleting.note || (deleting.tur === 'GELIR' ? 'Gelir' : 'Gider')} (${
+            ? `${deleting.note || (deleting.tur === 'GELIR' ? 'Borç' : 'Ödeme')} (${
                 deleting.tur === 'GELIR' ? '+' : '-'
               }${formatTL(numericStringToKurus(String(deleting.tutar)))}) silinecek. Bu işlem geri alınamaz.`
             : ''
@@ -550,35 +653,36 @@ export default function IsletmeDetay() {
         onCancel={() => setDeleting(null)}
       />
 
-      {/* Kasaya Yansıt onayı (tek hareket) */}
+      {/* Ödeme Topla onayı (tek hareket) */}
       <ConfirmDialog
         open={yansitConfirm !== null}
-        title="Kasaya yansıt"
+        title="Ödeme topla"
         message={
           yansitConfirm
-            ? `${yansitConfirm.note || (yansitConfirm.tur === 'GELIR' ? 'Gelir' : 'Gider')} (${
-                yansitConfirm.tur === 'GELIR' ? '+' : '-'
-              }${formatTL(numericStringToKurus(String(yansitConfirm.tutar)))}) onaya gönderilecek.`
+            ? `${yansitConfirm.note || (yansitConfirm.tur === 'GELIR' ? 'Borç' : 'Ödeme')} (${formatTL(
+                numericStringToKurus(String(yansitConfirm.tutar)),
+              )}) tahsilatı onaya gönderilecek.`
             : ''
         }
-        confirmLabel="Yansıt"
+        confirmLabel="Topla"
         busy={false}
         onConfirm={() => void onConfirmYansit()}
         onCancel={() => setYansitConfirm(null)}
       />
 
-      {/* Tümünü Yansıt onayı — lists exactly what will hit the Onay queue */}
+      {/* Tümünü Topla onayı — lists exactly what will hit the Onay queue */}
       <FormModal
         open={yansitAllOpen}
-        title="Tümünü Kasaya Yansıt"
+        title="Tümünü Topla"
         error={yansitAllError}
         busy={yansitAllBusy}
-        confirmLabel="Yansıt"
+        confirmLabel="Topla"
         onConfirm={() => void onYansitAll()}
         onClose={() => setYansitAllOpen(false)}
       >
         <p className="text-[13px] leading-relaxed text-muted">
-          Aşağıdaki {hareketler.length} hareket onay kuyruğuna gönderilecek:
+          Aşağıdaki {hareketler.length} hareket için ödeme toplanacak (onay kuyruğuna
+          gönderilecek):
         </p>
         <div className="flex max-h-[260px] flex-col gap-[6px] overflow-y-auto">
           {hareketler.map((h) => (
@@ -588,15 +692,11 @@ export default function IsletmeDetay() {
             >
               <div className="min-w-0">
                 <div className="truncate text-[13px] font-semibold text-ink">
-                  {h.note || (h.tur === 'GELIR' ? 'Gelir' : 'Gider')}
+                  {h.note || (h.tur === 'GELIR' ? 'Borç' : 'Ödeme')}
                 </div>
                 <div className="text-[11px] text-muted">{formatRelativeDate(h.tarih)}</div>
               </div>
-              <div
-                className="shrink-0 text-[13px] font-bold"
-                style={{ color: h.tur === 'GELIR' ? '#15803D' : '#C62828' }}
-              >
-                {h.tur === 'GELIR' ? '+' : '-'}
+              <div className="shrink-0 text-[13px] font-bold text-ink">
                 {formatTL(numericStringToKurus(String(h.tutar)))}
               </div>
             </div>
@@ -663,6 +763,23 @@ export default function IsletmeDetay() {
             onChange={(e) => setEditModal((m) => ({ ...m, note: e.target.value }))}
             className={modalInputCls}
           />
+        </div>
+        <div>
+          <div className={modalFieldLabel}>TELEFON</div>
+          <div className="flex items-center rounded-[12px] bg-field px-[14px] py-[13px]">
+            <span className="shrink-0 text-[15px] font-semibold text-muted">+90</span>
+            <input
+              type="tel"
+              inputMode="numeric"
+              placeholder="___ ___ __ __"
+              value={editModal.telefon}
+              onChange={(e) =>
+                setEditModal((m) => ({ ...m, telefon: normalizeTelGenel(e.target.value) }))
+              }
+              maxLength={10}
+              className="w-full min-w-0 border-none bg-transparent pl-2 text-[15px] text-ink outline-none placeholder:text-faint"
+            />
+          </div>
         </div>
       </FormModal>
 

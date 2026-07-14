@@ -1,3 +1,5 @@
+import type { OdemeYontemi } from '../../lib/types'
+
 export type KayitDurum = 'AKTIF' | 'BEKLENEN' | 'TAMAMLANDI'
 
 export interface Paket {
@@ -30,6 +32,12 @@ export interface Kayit {
   bitis_saati: string | null
   durum: KayitDurum
   notlar: string
+  /** Müşteri cep no, ulusal kısım "5XXXXXXXXX" (035); '' = girilmedi. */
+  musteri_tel: string
+  /** Finans kaydında baştan girilen tutar/yöntem/komisyon (034); yoksa null. */
+  tutar: number | string | null
+  odeme_yontemi: OdemeYontemi | null
+  komisyon: number | string | null
   /** Set = a silme isteği is waiting in the Onay queue (013). RPC-only. */
   silme_talebi_by: string | null
   silme_talebi_at: string | null
@@ -44,6 +52,7 @@ export interface Kayit {
 
 export interface KayitFields {
   musteri_adi: string
+  musteri_tel: string
   plaka: string
   marka: string
   model: string
@@ -55,4 +64,11 @@ export interface KayitFields {
   baslangic_saati: string | null
   bitis_saati: string | null
   notlar: string
+}
+
+/** Finance-only kayıt fields, set at creation (034). NUMERIC values as strings. */
+export interface KayitFinansAlanlari {
+  tutar: string | null
+  odeme_yontemi: OdemeYontemi | null
+  komisyon: string | null
 }
