@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { useBusiness } from '../../app/providers/BusinessProvider'
 import { formatTL, parseTLToKurus } from '../../lib/money'
+import { SwapIcon } from '../kayit/icons'
+import { BellButton, ProfileButton } from '../settings/HeaderButtons'
 import { FormModal, modalFieldLabel, modalInputCls } from '../yonetim/shared'
 import type { IstekTur } from '../yonetim/types'
 import { useCreateIstek, useMyMaas } from './api'
@@ -9,26 +11,24 @@ import { useCreateIstek, useMyMaas } from './api'
 const ACTIONS: {
   tur: IstekTur
   label: string
-  desc: string
   iconBg: string
   icon: React.ReactNode
 }[] = [
   {
     tur: 'AVANS',
     label: 'Avans İste',
-    desc: 'Maaşınızdan avans talep edin',
     iconBg: '#F0FDF4',
     icon: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#15803D" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <line x1="12" y1="1" x2="12" y2="23" />
-        <path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" />
+        <path d="M21 12V7H5a2 2 0 010-4h14v4" />
+        <path d="M3 5v14a2 2 0 002 2h16v-5" />
+        <path d="M18 12a2 2 0 000 4h4v-4h-4z" />
       </svg>
     ),
   },
   {
     tur: 'SIKAYET',
     label: 'Şikayet Oluştur',
-    desc: 'Bir sorunu yönetime iletin',
     iconBg: '#FEF3F2',
     icon: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#C62828" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -41,7 +41,6 @@ const ACTIONS: {
   {
     tur: 'ONERI',
     label: 'Öneride Bulun',
-    desc: 'Fikrinizi yönetimle paylaşın',
     iconBg: '#FFF7ED',
     icon: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#B45309" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -61,7 +60,7 @@ const TITLES: Record<IstekTur, string> = {
 
 export default function Islemler() {
   const navigate = useNavigate()
-  const { activeBusiness } = useBusiness()
+  const { activeBusiness, businesses } = useBusiness()
   const businessId = activeBusiness?.id ?? ''
   const { data: maasKurus = 0 } = useMyMaas(businessId)
   const createIstek = useCreateIstek()
@@ -111,7 +110,25 @@ export default function Islemler() {
 
   return (
     <div className="screen-forward">
-      <div className="px-6 pt-5">
+      {/* Kayıt ekranıyla aynı üst satır: işletme adı + zil + profil */}
+      <div className="flex items-center gap-2 px-6 pt-5">
+        <span className="text-[15px] font-bold text-ink">{activeBusiness?.name ?? ''}</span>
+        {businesses.length > 1 && (
+          <button
+            type="button"
+            onClick={() => void navigate('/isletme-sec')}
+            aria-label="İşletme değiştir"
+            className="pressable flex h-9 w-9 cursor-pointer items-center justify-center rounded-[12px] bg-field"
+          >
+            <SwapIcon size={16} />
+          </button>
+        )}
+        <div className="flex-1" />
+        <BellButton />
+        <ProfileButton />
+      </div>
+
+      <div className="px-6 pt-4">
         <h1 className="text-[26px] font-bold tracking-[-0.4px] text-ink">İşlemler</h1>
         <p className="mt-1 text-[14px] text-muted">Yönetime istek gönderin</p>
       </div>
@@ -162,10 +179,7 @@ export default function Islemler() {
             >
               {a.icon}
             </span>
-            <span className="min-w-0">
-              <span className="block text-[15px] font-bold text-ink">{a.label}</span>
-              <span className="mt-[1px] block text-[12.5px] text-muted">{a.desc}</span>
-            </span>
+            <span className="min-w-0 text-[15px] font-bold text-ink">{a.label}</span>
           </button>
         ))}
 

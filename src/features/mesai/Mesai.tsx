@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { useBusiness } from '../../app/providers/BusinessProvider'
 import { formatCreatedStamp } from '../../lib/dates'
@@ -16,24 +16,41 @@ interface Step {
   state: StepState
 }
 
-/** Browser geolocation as a promise. */
+/**
+ * Browser geolocation as a promise. enableHighAccuracy is FALSE on purpose:
+ * a check-in is indoors (garage/office) where GPS can't get a fix — network
+ * (WiFi/cell) location works indoors and returns fast. A recent cached
+ * position (maximumAge) is fine for a geofence and avoids needless failures.
+ */
 function getPosition(): Promise<GeolocationPosition> {
   return new Promise((resolve, reject) => {
     navigator.geolocation.getCurrentPosition(resolve, reject, {
-      enableHighAccuracy: true,
-      timeout: 15000,
-      maximumAge: 0,
+      enableHighAccuracy: false,
+      timeout: 20000,
+      maximumAge: 60000,
     })
   })
+}
+
+/**
+ * Supabase RPC errors are PostgrestError objects, NOT Error instances — so
+ * `err instanceof Error` misses them and the server's raised Turkish message
+ * (e.g. "Konumunuz limitin dışında (300 m). İşletmeye yaklaşın.") gets lost.
+ * Read `.message` off whatever shape we got.
+ */
+function rpcErrorText(err: unknown, fallback: string): string {
+  const m = (err as { message?: unknown } | null)?.message
+  return typeof m === 'string' && m.trim() !== '' ? m : fallback
 }
 
 function geoErrorText(err: unknown): string {
   const code = (err as GeolocationPositionError | undefined)?.code
   if (code === 1)
-    return 'Konum izni reddedildi — telefon ayarlarından tarayıcıya/uygulamaya konum izni verin'
-  if (code === 2) return 'Konum belirlenemedi — GPS sinyali alınamıyor'
-  if (code === 3) return 'Konum alınamadı (zaman aşımı) — tekrar deneyin'
-  return 'Konum alınamadı veya izin reddedildi'
+    return 'Konum izni kapalı. Ayarlar → Gizlilik ve Güvenlik → Konum Servisleri açık olmalı; ardından Safari Web Siteleri "Sor / Kullanırken" olmalı.'
+  if (code === 2)
+    return 'Konum alınamadı (sinyal yok). Kapalı alanda GPS zayıf olabilir; Wi-Fi açık olmalı ve tekrar deneyin.'
+  if (code === 3) return 'Konum zaman aşımına uğradı — tekrar deneyin.'
+  return 'Konum alınamadı veya izin reddedildi.'
 }
 
 function StepIcon({ state }: { state: StepState }) {
@@ -72,6 +89,27 @@ export default function Mesai() {
 
   const [steps, setSteps] = useState<Step[]>([])
   const [busy, setBusy] = useState(false)
+  // true = konum izni cihazda kapalı/engelli → Ayarlar adımlarını göster
+  const [blocked, setBlocked] = useState(false)
+
+  // Best-effort ön kontrol: Permissions API destekleniyorsa (iOS'ta her zaman
+  // değil) izin 'denied' ise panel daha dokunmadan görünür; asıl güvenilir
+  // sinyal yine de aşağıdaki code === 1 hatasıdır.
+  useEffect(() => {
+    let live = true
+    const perms = navigator.permissions
+    if (!perms?.query) return
+    perms
+      .query({ name: 'geolocation' as PermissionName })
+      .then((s) => {
+        if (live) setBlocked(s.state === 'denied')
+        s.onchange = () => setBlocked(s.state === 'denied')
+      })
+      .catch(() => {})
+    return () => {
+      live = false
+    }
+  }, [])
 
   const acik = kayitlar[0]?.tip === 'GIRIS'
   const tip: 'GIRIS' | 'CIKIS' = acik ? 'CIKIS' : 'GIRIS'
@@ -89,17 +127,19 @@ export default function Mesai() {
 
   async function run() {
     if (busy || !businessId) return
-    setBusy(true)
-    setSteps([])
 
-    // The permission prompt only appears while the tap gesture is still
-    // "live" (iOS home-screen PWAs enforce this strictly). Waiting for the
-    // IP check's network round-trip kills the gesture and geolocation is
-    // then rejected without ever asking — so the position request starts
-    // immediately on tap and its result is ignored if the office network
-    // check succeeds first.
+    // iOS only shows the geolocation prompt while the tap gesture is still
+    // "live". getCurrentPosition MUST be the very first thing the handler
+    // does — even a React state update before it can consume the gesture and
+    // then the prompt silently never appears. So we fire it before any
+    // setState / network work; its result is ignored if the office-network
+    // (static IP) check succeeds first.
     const posPromise = 'geolocation' in navigator ? getPosition() : null
     posPromise?.catch(() => {})
+
+    setBusy(true)
+    setSteps([])
+    setBlocked(false)
 
     try {
       push({ text: 'Ofis ağı (statik IP) kontrol ediliyor', state: 'run' })
@@ -123,7 +163,13 @@ export default function Mesai() {
       try {
         pos = await posPromise
       } catch (err) {
-        replaceLast('err', geoErrorText(err))
+        // code 1 = izin engelli: tek satır hata yerine Ayarlar adım panelini aç
+        if ((err as GeolocationPositionError | undefined)?.code === 1) {
+          setBlocked(true)
+          replaceLast('err', 'Konum izni kapalı')
+        } else {
+          replaceLast('err', geoErrorText(err))
+        }
         return
       }
       replaceLast('ok', 'Konum alındı')
@@ -135,10 +181,11 @@ export default function Mesai() {
         push({ text: tip === 'GIRIS' ? 'Giriş kaydedildi' : 'Çıkış kaydedildi', state: 'ok' })
         invalidate()
       } catch (err) {
-        replaceLast('err', err instanceof Error ? err.message : 'İşlem yapılamadı')
+        // sunucunun mesajını göster (ör. "Konumunuz limitin dışında (… m)")
+        replaceLast('err', rpcErrorText(err, 'İşlem yapılamadı'))
       }
     } catch (err) {
-      push({ text: err instanceof Error ? err.message : 'Bir hata oluştu', state: 'err' })
+      push({ text: rpcErrorText(err, 'Bir hata oluştu'), state: 'err' })
     } finally {
       setBusy(false)
     }
@@ -221,6 +268,40 @@ export default function Mesai() {
           {busy ? 'Kontrol ediliyor…' : acik ? 'Çıkış Yap' : 'Giriş Yap'}
         </button>
       </div>
+
+      {/* Konum izni engelliyse Ayarlar adımları (web uygulaması Ayarlar'ı
+          kendisi açamaz — adımlar elle uygulanır) */}
+      {blocked && (
+        <div className="mx-6 mt-4 rounded-[18px] border border-[#F5C6C6] bg-[#FEF3F2] px-4 py-4">
+          <div className="mb-1 flex items-center gap-2">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#C62828" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 22s8-4.5 8-11a8 8 0 10-16 0c0 6.5 8 11 8 11z" />
+              <line x1="12" y1="8" x2="12" y2="12" />
+              <line x1="12" y1="15.5" x2="12.01" y2="15.5" />
+            </svg>
+            <span className="text-[14px] font-bold text-[#C62828]">Konum izni kapalı</span>
+          </div>
+          <p className="mb-3 text-[12.5px] leading-relaxed text-[#8a3a3a]">
+            Konum tarayıcı/uygulama için kapalı. Açmak için telefon ayarlarından şu adımları
+            izleyin, sonra bu ekrana dönüp tekrar deneyin:
+          </p>
+          <ol className="flex flex-col gap-2">
+            {[
+              'Ayarlar uygulamasını açın',
+              'Gizlilik ve Güvenlik → Konum Servisleri (açık olmalı)',
+              'Listeden PilotGarage (veya Safari Web Siteleri) → “Sor” ya da “Uygulamayı Kullanırken”',
+              'Bu ekrana dönüp tekrar “Giriş Yap”a dokunun',
+            ].map((t, i) => (
+              <li key={i} className="flex items-start gap-[10px]">
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#C62828] text-[11px] font-bold text-white">
+                  {i + 1}
+                </span>
+                <span className="text-[12.5px] leading-relaxed text-ink">{t}</span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
 
       {/* Doğrulama adımları — akış sırasında */}
       {steps.length > 0 && (

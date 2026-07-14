@@ -5,7 +5,7 @@
 -- Everything happens inside one transaction that is ROLLED BACK at the
 -- end — no test data survives, safe to run on the live project.
 --
--- Prerequisite: migrations 001–038 applied. (Checks were written against
+-- Prerequisite: migrations 001–039 applied. (Checks were written against
 -- 001–013; the later migrations keep every asserted behavior — decided-row
 -- immutability now has RPC-only escape hatches that this file does not
 -- exercise, so all checks still pass unchanged.)
@@ -684,6 +684,33 @@ begin
   values (v_servis, u_personel, 'AVANS', 200.00);
   perform pg_temp.logout();
   raise notice 'PASS 21: avans isteği maaş sınırı — maaş doluyken tavan, boşken sınırsız (038)';
+
+  -- ═══ 17) Komisyon ana işleme bağlı, birlikte silinir (039) ═══
+  -- KK komisyonlu işlem onaylanınca komisyon gideri komisyon_of ile bağlanır;
+  -- ana işlem delete_islem ile silinince komisyon da gider (öksüz kalmaz).
+
+  perform pg_temp.login(u_muhasebe);
+  insert into islemler
+    (business_id, tur, tutar, baslik, kaynak, durum, created_by, odeme_yontemi, komisyon)
+  values
+    (v_servis, 'GELIR', 400.00, 'Komisyon bağ testi', 'MANUEL', 'BEKLIYOR',
+     u_muhasebe, 'KREDI_KARTI', 20.00)
+  returning id into v_islem_c1;
+  perform approve_islem(v_islem_c1);
+
+  select id into v_islem_c2 from islemler
+  where komisyon_of = v_islem_c1 and tur = 'GIDER' and tutar = 20.00;
+  if v_islem_c2 is null then
+    raise exception 'FAIL: komisyon komisyon_of ile bağlanmadı (039)';
+  end if;
+
+  perform delete_islem(v_islem_c1);
+  select count(*) into n from islemler where id in (v_islem_c1, v_islem_c2);
+  if n <> 0 then
+    raise exception 'FAIL: ana işlem silinince komisyon öksüz kaldı (%)', n;
+  end if;
+  perform pg_temp.logout();
+  raise notice 'PASS 22: komisyon ana işleme bağlı, birlikte silinir (039)';
 
   raise notice '';
   raise notice '=== ALL TESTS PASSED (rolling back — no test data persists) ===';

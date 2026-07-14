@@ -12,5 +12,6 @@ export function canManageRoles(role: Role | null): boolean {
 }
 
 export function homePathFor(role: Role | null): string {
-  return role === 'PERSONEL' ? '/personel' : '/yonetici'
+  // Personel lands on İşlemler (their action hub), not the Kayıtlar list.
+  return role === 'PERSONEL' ? '/istekler' : '/yonetici'
 }
