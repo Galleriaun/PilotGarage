@@ -21,7 +21,8 @@ interface Step {
 
 /** Bu hassasiyette (±m) bir sabitleme geofence için güvenilir sayılır. */
 const GOOD_ACCURACY_M = 50
-/** Bundan kötü bir sabitleme sunucuya gönderilmez (Wi-Fi/baz istasyonu tahmini). */
+/** Bundan kötüsü "yaklaşık" sayılır (Wi-Fi/baz istasyonu tahmini) — yine de
+ *  gönderilir; mesafeye sunucu karar verir. Adım satırında işaretlenir. */
 const MAX_ACCURACY_M = 100
 /**
  * İyi bir sabitleme için beklenecek süre; sonra eldeki en iyisi kullanılır.
@@ -356,18 +357,15 @@ export default function Mesai() {
         return
       }
 
-      // GPS kilitlenemediyse tarayıcı Wi-Fi/baz istasyonu tahminine düşer;
-      // böyle bir sabitlemeyle mesafe hesaplamak kullanıcıyı binadayken
-      // "uzakta" gösterir. Sunucuya göndermeden dur.
+      // Kaba (Wi-Fi/baz istasyonu) sabitleme de artık GÖNDERİLİR (owner kararı
+      // 2026-07-16): hassas konum vermeyen cihazı istemcide engellemek personeli
+      // tamamen kilitliyordu. Mesafe kontrolü zaten sunucuda — yaklaşık konum
+      // yarıçapın dışına düşerse sunucu Türkçe mesajıyla reddeder.
       const dogruluk = Math.round(pos.coords.accuracy)
-      if (dogruluk > MAX_ACCURACY_M) {
-        replaceLast(
-          'err',
-          `Konum yeterince hassas değil (±${dogruluk} m). Cihaz hassas konum vermiyor — ofis Wi-Fi'sine bağlıyken deneyin.`,
-        )
-        return
-      }
-      replaceLast('ok', `Konum alındı (±${dogruluk} m)`)
+      replaceLast(
+        'ok',
+        `Konum alındı (±${dogruluk} m${dogruluk > MAX_ACCURACY_M ? ' — yaklaşık' : ''})`,
+      )
 
       push({ text: 'İşletmeye uzaklık kontrol ediliyor', state: 'run' })
       try {
