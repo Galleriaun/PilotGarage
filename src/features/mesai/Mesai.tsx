@@ -30,6 +30,13 @@ const MAX_ACCURACY_M = 100
  * bu pencereyi uzatmanın algılanan maliyeti düşük.
  */
 const WAIT_MS = 25000
+/**
+ * İlk sabitlemeden sonra bu süre boyunca DAHA İYİ bir sabitleme gelmezse
+ * beklemeyi kes ve eldekiyle devam et. Kaba (Wi-Fi/baz istasyonu) tahminler
+ * her saniye birebir aynı değerle tekrarlar — cihaz hassas konum vermeyecekse
+ * 25 sn bekletmenin anlamı yok; iyileşme durduğunda erken pes edilir.
+ */
+const STALL_MS = 6000
 /** Isıtmadan gelen sabitleme bu yaştan eskiyse artık güvenilmez. */
 const FRESH_MS = 60000
 
@@ -50,11 +57,13 @@ function getPosition(onProgress?: (accuracy: number) => void): Promise<Geolocati
   return new Promise((resolve, reject) => {
     let best: GeolocationPosition | null = null
     let settled = false
+    let stallTimer: ReturnType<typeof setTimeout> | undefined
 
     const stop = () => {
       settled = true
       navigator.geolocation.clearWatch(watchId)
       clearTimeout(timer)
+      clearTimeout(stallTimer)
     }
 
     const timer = setTimeout(() => {
@@ -70,6 +79,14 @@ function getPosition(onProgress?: (accuracy: number) => void): Promise<Geolocati
         if (!best || pos.coords.accuracy < best.coords.accuracy) {
           best = pos
           onProgress?.(Math.round(pos.coords.accuracy))
+          // İyileşme durursa (kaba tahmin aynı değerle tekrarlıyorsa) tam
+          // süreyi bekletme — eldeki en iyiyle erken dön.
+          clearTimeout(stallTimer)
+          stallTimer = setTimeout(() => {
+            if (settled) return
+            stop()
+            resolve(best as GeolocationPosition)
+          }, STALL_MS)
         }
         if (pos.coords.accuracy <= GOOD_ACCURACY_M) {
           stop()
@@ -147,8 +164,6 @@ export default function Mesai() {
   const [busy, setBusy] = useState(false)
   // true = konum izni cihazda kapalı/engelli → Ayarlar adımlarını göster
   const [blocked, setBlocked] = useState(false)
-  // ±m — cihaz yalnızca kaba (Wi-Fi/baz istasyonu) konum verdi → ipucu paneli
-  const [coarse, setCoarse] = useState<number | null>(null)
   // Isıtmadan gelen en iyi güncel sabitleme (ekran açıkken arka planda toplanır)
   const warmRef = useRef<GeolocationPosition | null>(null)
   // ±m — ısıtmanın durumu: butonun altında "GPS hazır" rozetini besler
@@ -298,7 +313,6 @@ export default function Mesai() {
     setBusy(true)
     setSteps([])
     setBlocked(false)
-    setCoarse(null)
     setLiveAcc(warmUsable ? Math.round(warmUsable.coords.accuracy) : null)
 
     try {
@@ -344,11 +358,13 @@ export default function Mesai() {
 
       // GPS kilitlenemediyse tarayıcı Wi-Fi/baz istasyonu tahminine düşer;
       // böyle bir sabitlemeyle mesafe hesaplamak kullanıcıyı binadayken
-      // "uzakta" gösterir. Sunucuya göndermeden dur, ipucu panelini aç.
+      // "uzakta" gösterir. Sunucuya göndermeden dur.
       const dogruluk = Math.round(pos.coords.accuracy)
       if (dogruluk > MAX_ACCURACY_M) {
-        setCoarse(dogruluk)
-        replaceLast('err', `Konum yeterince hassas değil (±${dogruluk} m)`)
+        replaceLast(
+          'err',
+          `Konum yeterince hassas değil (±${dogruluk} m). Cihaz hassas konum vermiyor — ofis Wi-Fi'sine bağlıyken deneyin.`,
+        )
         return
       }
       replaceLast('ok', `Konum alındı (±${dogruluk} m)`)
@@ -472,47 +488,6 @@ export default function Mesai() {
           </div>
         )}
       </div>
-
-      {/* Cihaz yalnızca kaba (Wi-Fi/baz istasyonu) konum verdiyse: nedeni ve
-          çözümü söyle. Aynı ±m değerinin her denemede tekrarlaması, Android'in
-          "Kesin konum" kapalıyken verdiği ızgaraya oturtulmuş tahminin tipik
-          işaretidir. */}
-      {coarse !== null && (
-        <div className="mx-6 mt-4 rounded-[18px] border border-[#F5D9A8] bg-[#FFF7ED] px-4 py-4">
-          <div className="mb-1 flex items-center gap-2">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#B45309" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="9" />
-              <line x1="12" y1="8" x2="12" y2="12" />
-              <line x1="12" y1="15.5" x2="12.01" y2="15.5" />
-            </svg>
-            <span className="text-[14px] font-bold text-[#B45309]">
-              Telefon hassas konum vermiyor (±{coarse} m)
-            </span>
-          </div>
-          <p className="mb-3 text-[12.5px] leading-relaxed text-[#7a5320]">
-            Cihaz GPS yerine yaklaşık (Wi-Fi/baz istasyonu) konum döndürüyor. Genellikle şu
-            ayarlardan kaynaklanır:
-          </p>
-          <ol className="flex flex-col gap-2">
-            {[
-              'Android: Ayarlar → Konum → Uygulama izinleri → tarayıcı (Chrome) → “Kesin konum” AÇIK olmalı',
-              'Pil tasarrufu modu kapalıyken deneyin (GPS kısıtlanabilir)',
-              'Mümkünse pencere kenarında ya da açık alanda birkaç saniye bekleyip tekrar deneyin',
-            ].map((t, i) => (
-              <li key={i} className="flex items-start gap-[10px]">
-                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#B45309] text-[11px] font-bold text-white">
-                  {i + 1}
-                </span>
-                <span className="text-[12.5px] leading-relaxed text-ink">{t}</span>
-              </li>
-            ))}
-          </ol>
-          <p className="mt-3 text-[12px] leading-relaxed text-[#7a5320]">
-            Kalıcı çözüm: yöneticiniz İşletme Ayarları'ndan ofis Wi-Fi ağını tanımlarsa, o ağa
-            bağlıyken giriş/çıkış konum gerektirmez.
-          </p>
-        </div>
-      )}
 
       {/* Konum izni engelliyse Ayarlar adımları (web uygulaması Ayarlar'ı
           kendisi açamaz — adımlar elle uygulanır) */}
