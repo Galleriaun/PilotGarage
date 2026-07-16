@@ -16,22 +16,59 @@ interface Step {
   state: StepState
 }
 
+/** Bu hassasiyette (±m) bir sabitleme geofence için güvenilir sayılır. */
+const GOOD_ACCURACY_M = 50
+/** Bundan kötü bir sabitleme sunucuya gönderilmez (Wi-Fi/baz istasyonu tahmini). */
+const MAX_ACCURACY_M = 100
+/** İyi bir sabitleme için beklenecek süre; sonra eldeki en iyisi kullanılır. */
+const WAIT_MS = 15000
+
 /**
- * Browser geolocation as a promise.
+ * Konumu, HASSASİYETİ kabul edilebilir olana kadar bekleyerek alır.
  *
- * enableHighAccuracy MUST stay true: the geofence radius is tens of metres,
- * and real check-ins here land at 14–26 m with GPS. The low-accuracy mode
- * falls back to Wi-Fi/cell triangulation (~100–1000 m error) and reports the
- * user hundreds of metres away while they stand in the building.
- * maximumAge is 0 so a stale fix (e.g. from the drive in) is never reused.
+ * getCurrentPosition tek atış yapar: GPS kilitlenemediğinde (kapalı alan)
+ * tarayıcı sessizce Wi-Fi/baz istasyonu tahminine düşer ve ±200 m'lik bir
+ * konumu geçerliymiş gibi döndürür — kullanıcı binadayken "212 m uzakta"
+ * denmesinin sebebi buydu. watchPosition ile sabitlemeler iyileştikçe
+ * dinlenir, GOOD_ACCURACY_M'e ulaşan ilk sabitleme kullanılır; süre dolarsa
+ * eldeki en iyisi döner (hassasiyeti run() ayrıca denetler).
  */
 function getPosition(): Promise<GeolocationPosition> {
   return new Promise((resolve, reject) => {
-    navigator.geolocation.getCurrentPosition(resolve, reject, {
-      enableHighAccuracy: true,
-      timeout: 20000,
-      maximumAge: 0,
-    })
+    let best: GeolocationPosition | null = null
+    let settled = false
+
+    const stop = () => {
+      settled = true
+      navigator.geolocation.clearWatch(watchId)
+      clearTimeout(timer)
+    }
+
+    const timer = setTimeout(() => {
+      if (settled) return
+      stop()
+      if (best) resolve(best)
+      else reject({ code: 3, message: 'timeout' } as GeolocationPositionError)
+    }, WAIT_MS)
+
+    const watchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        if (settled) return
+        if (!best || pos.coords.accuracy < best.coords.accuracy) best = pos
+        if (pos.coords.accuracy <= GOOD_ACCURACY_M) {
+          stop()
+          resolve(pos)
+        }
+      },
+      (err) => {
+        if (settled) return
+        // hata gelse de elimizde bir sabitleme varsa onu kullan
+        stop()
+        if (best) resolve(best)
+        else reject(err)
+      },
+      { enableHighAccuracy: true, timeout: WAIT_MS, maximumAge: 0 },
+    )
   })
 }
 
@@ -175,7 +212,19 @@ export default function Mesai() {
         }
         return
       }
-      replaceLast('ok', 'Konum alındı')
+
+      // GPS kilitlenemediyse tarayıcı Wi-Fi/baz istasyonu tahminine düşer;
+      // böyle bir sabitlemeyle mesafe hesaplamak kullanıcıyı binadayken
+      // "uzakta" gösterir. Sunucuya göndermeden dur.
+      const dogruluk = Math.round(pos.coords.accuracy)
+      if (dogruluk > MAX_ACCURACY_M) {
+        replaceLast(
+          'err',
+          `Konum yeterince hassas değil (±${dogruluk} m). GPS sinyali zayıf — pencere kenarına ya da açık alana çıkıp tekrar deneyin.`,
+        )
+        return
+      }
+      replaceLast('ok', `Konum alındı (±${dogruluk} m)`)
 
       push({ text: 'İşletmeye uzaklık kontrol ediliyor', state: 'run' })
       try {
