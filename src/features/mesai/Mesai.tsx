@@ -17,17 +17,20 @@ interface Step {
 }
 
 /**
- * Browser geolocation as a promise. enableHighAccuracy is FALSE on purpose:
- * a check-in is indoors (garage/office) where GPS can't get a fix — network
- * (WiFi/cell) location works indoors and returns fast. A recent cached
- * position (maximumAge) is fine for a geofence and avoids needless failures.
+ * Browser geolocation as a promise.
+ *
+ * enableHighAccuracy MUST stay true: the geofence radius is tens of metres,
+ * and real check-ins here land at 14–26 m with GPS. The low-accuracy mode
+ * falls back to Wi-Fi/cell triangulation (~100–1000 m error) and reports the
+ * user hundreds of metres away while they stand in the building.
+ * maximumAge is 0 so a stale fix (e.g. from the drive in) is never reused.
  */
 function getPosition(): Promise<GeolocationPosition> {
   return new Promise((resolve, reject) => {
     navigator.geolocation.getCurrentPosition(resolve, reject, {
-      enableHighAccuracy: false,
+      enableHighAccuracy: true,
       timeout: 20000,
-      maximumAge: 60000,
+      maximumAge: 0,
     })
   })
 }
