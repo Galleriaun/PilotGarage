@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useMesaiKonum, useSaveMesaiKonum } from './api'
+import { mesaiSuAnkiIp, useMesaiKonum, useSaveMesaiKonum } from './api'
 
 /** Mesai konum/IP config card for İşletme Ayarları (finance). */
 export default function MesaiKonumSection({ businessId }: { businessId: string }) {
@@ -12,6 +12,18 @@ export default function MesaiKonumSection({ businessId }: { businessId: string }
   const [ipler, setIpler] = useState('')
   const [msg, setMsg] = useState('')
   const [geoMsg, setGeoMsg] = useState('')
+  // bu cihazın sunucu tarafından görülen IP'si — tek dokunuşla listeye eklenir
+  const [myIp, setMyIp] = useState('')
+
+  useEffect(() => {
+    let live = true
+    void mesaiSuAnkiIp().then((ip) => {
+      if (live) setMyIp(ip)
+    })
+    return () => {
+      live = false
+    }
+  }, [])
 
   // hydrate once when the query resolves
   useEffect(() => {
@@ -21,6 +33,17 @@ export default function MesaiKonumSection({ businessId }: { businessId: string }
     setYaricap(String(konum.konum_yaricap_m ?? 300))
     setIpler((konum.statik_ipler ?? []).join(', '))
   }, [konum])
+
+  const ipListesi = ipler
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+  const myIpEkli = myIp !== '' && ipListesi.includes(myIp)
+
+  function addMyIp() {
+    if (!myIp || myIpEkli) return
+    setIpler(ipListesi.concat(myIp).join(', '))
+  }
 
   function useMyLocation() {
     setGeoMsg('')
@@ -131,7 +154,7 @@ export default function MesaiKonumSection({ businessId }: { businessId: string }
 
         <div>
           <div className="mb-[6px] mt-1 text-[11px] font-bold tracking-[0.5px] text-faint">
-            STATİK IP'LER (virgülle ayırın, isteğe bağlı)
+            OFİS AĞI IP'LERİ (virgülle ayırın, isteğe bağlı)
           </div>
           <input
             type="text"
@@ -140,6 +163,31 @@ export default function MesaiKonumSection({ businessId }: { businessId: string }
             onChange={(e) => setIpler(e.target.value)}
             className={inputCls}
           />
+          {/* Tek dokunuşla ofis ağı kaydı: ofis Wi-Fi'sindeyken bu cihazın
+              IP'si eklenir — personel o ağdayken giriş/çıkış GPS gerektirmez */}
+          {myIp && (
+            <div className="mt-2 flex items-center justify-between gap-2 rounded-[12px] bg-card px-3 py-[9px]">
+              <span className="min-w-0 truncate text-[12.5px] text-muted">
+                Bu ağın IP'si: <span className="font-semibold text-ink">{myIp}</span>
+              </span>
+              {myIpEkli ? (
+                <span className="shrink-0 text-[12px] font-semibold text-success">✓ Listede</span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={addMyIp}
+                  className="shrink-0 cursor-pointer rounded-[9px] bg-ink px-3 py-[6px] text-[12px] font-semibold text-white"
+                >
+                  Bu ağı ekle
+                </button>
+              )}
+            </div>
+          )}
+          <p className="mt-[6px] text-[11.5px] leading-relaxed text-faint">
+            Ofis Wi-Fi'sine bağlıyken "Bu ağı ekle"ye dokunup kaydedin — o ağdaki personel
+            giriş/çıkışta konuma hiç ihtiyaç duymaz. İnternet sağlayıcınız IP'yi değiştirirse
+            (ör. modem yeniden başlatılınca) buraya dönüp yeni IP'yi eklemeniz yeterli.
+          </p>
         </div>
 
         {msg && (

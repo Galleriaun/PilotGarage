@@ -200,6 +200,22 @@ export async function checkMesaiIp(businessId: string): Promise<boolean> {
   return data as boolean
 }
 
+/**
+ * The caller's public IP as the server sees it (mesai_caller_ip RPC).
+ * Used to register the office network with one tap in İşletme Ayarları and
+ * to show the device IP when the office-network check fails. Best-effort:
+ * returns '' on any error.
+ */
+export async function mesaiSuAnkiIp(): Promise<string> {
+  try {
+    const { data, error } = await supabase.rpc('mesai_caller_ip')
+    if (error) return ''
+    return typeof data === 'string' ? data : ''
+  } catch {
+    return ''
+  }
+}
+
 export interface MesaiSonuc {
   kaynak: 'IP' | 'KONUM'
   mesafe_m: number | null

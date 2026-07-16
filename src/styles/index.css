@@ -138,11 +138,16 @@
 .dark [class*='bg-[#F'] {
   background-color: #26262b;
 }
-.dark [class*='border-[#E'] {
+.dark [class*='border-[#E'],
+.dark [class*='border-[#F'] {
   border-color: #2c2c31;
 }
 .dark [class*='text-[#5'],
-.dark [class*='text-[#6'] {
+.dark [class*='text-[#6'],
+/* uyarı/hata panellerinin gövde metni: koyu kahve/bordo tonlar koyu modda
+   panelin koyu zemininde okunamıyordu (kontrast ~2:1) */
+.dark [class*='text-[#7'],
+.dark [class*='text-[#8'] {
   color: #a6a6ad;
 }
 /* primary black buttons flip to light pills */

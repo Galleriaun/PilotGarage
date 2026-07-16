@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { useBusiness } from '../../app/providers/BusinessProvider'
 import { formatCreatedStamp } from '../../lib/dates'
@@ -6,6 +6,7 @@ import { BackChevron } from '../auth/EyeIcon'
 import {
   checkMesaiIp,
   mesaiGirisCikis,
+  mesaiSuAnkiIp,
   useInvalidateMesai,
   useMyMesai,
 } from './api'
@@ -14,14 +15,23 @@ type StepState = 'run' | 'ok' | 'err'
 interface Step {
   text: string
   state: StepState
+  /** true = konum adımı: çalışırken canlı hassasiyet (±m) alt satırda gösterilir */
+  live?: boolean
 }
 
 /** Bu hassasiyette (±m) bir sabitleme geofence için güvenilir sayılır. */
 const GOOD_ACCURACY_M = 50
 /** Bundan kötü bir sabitleme sunucuya gönderilmez (Wi-Fi/baz istasyonu tahmini). */
 const MAX_ACCURACY_M = 100
-/** İyi bir sabitleme için beklenecek süre; sonra eldeki en iyisi kullanılır. */
-const WAIT_MS = 15000
+/**
+ * İyi bir sabitleme için beklenecek süre; sonra eldeki en iyisi kullanılır.
+ * Soğuk başlayan bir GPS çipi kapalı alanda 15 sn'de çoğu kez kilitlenemiyordu;
+ * ısıtma (aşağıdaki warm-up) çoğu denemede beklemeyi zaten sıfırladığı için
+ * bu pencereyi uzatmanın algılanan maliyeti düşük.
+ */
+const WAIT_MS = 25000
+/** Isıtmadan gelen sabitleme bu yaştan eskiyse artık güvenilmez. */
+const FRESH_MS = 60000
 
 /**
  * Konumu, HASSASİYETİ kabul edilebilir olana kadar bekleyerek alır.
@@ -32,8 +42,11 @@ const WAIT_MS = 15000
  * denmesinin sebebi buydu. watchPosition ile sabitlemeler iyileştikçe
  * dinlenir, GOOD_ACCURACY_M'e ulaşan ilk sabitleme kullanılır; süre dolarsa
  * eldeki en iyisi döner (hassasiyeti run() ayrıca denetler).
+ *
+ * onProgress, her yeni "en iyi" sabitlemede çağrılır — kullanıcı ölü bir
+ * spinner yerine hassasiyetin iyileştiğini görür (±212 m → ±40 m).
  */
-function getPosition(): Promise<GeolocationPosition> {
+function getPosition(onProgress?: (accuracy: number) => void): Promise<GeolocationPosition> {
   return new Promise((resolve, reject) => {
     let best: GeolocationPosition | null = null
     let settled = false
@@ -54,7 +67,10 @@ function getPosition(): Promise<GeolocationPosition> {
     const watchId = navigator.geolocation.watchPosition(
       (pos) => {
         if (settled) return
-        if (!best || pos.coords.accuracy < best.coords.accuracy) best = pos
+        if (!best || pos.coords.accuracy < best.coords.accuracy) {
+          best = pos
+          onProgress?.(Math.round(pos.coords.accuracy))
+        }
         if (pos.coords.accuracy <= GOOD_ACCURACY_M) {
           stop()
           resolve(pos)
@@ -131,6 +147,14 @@ export default function Mesai() {
   const [busy, setBusy] = useState(false)
   // true = konum izni cihazda kapalı/engelli → Ayarlar adımlarını göster
   const [blocked, setBlocked] = useState(false)
+  // ±m — cihaz yalnızca kaba (Wi-Fi/baz istasyonu) konum verdi → ipucu paneli
+  const [coarse, setCoarse] = useState<number | null>(null)
+  // Isıtmadan gelen en iyi güncel sabitleme (ekran açıkken arka planda toplanır)
+  const warmRef = useRef<GeolocationPosition | null>(null)
+  // ±m — ısıtmanın durumu: butonun altında "GPS hazır" rozetini besler
+  const [warmAcc, setWarmAcc] = useState<number | null>(null)
+  // ±m — akış sırasında canlı hassasiyet: spinner yerine iyileşmeyi göster
+  const [liveAcc, setLiveAcc] = useState<number | null>(null)
 
   // Best-effort ön kontrol: Permissions API destekleniyorsa (iOS'ta her zaman
   // değil) izin 'denied' ise panel daha dokunmadan görünür; asıl güvenilir
@@ -151,6 +175,85 @@ export default function Mesai() {
     }
   }, [])
 
+  /**
+   * GPS ısıtma: ekran açıkken çip arka planda kilitlenmeye başlasın, böylece
+   * kullanıcı dokunduğunda sabitleme çoktan hazır olur (soğuk başlangıçta
+   * kapalı alanda kilitlenme 10-20 sn sürebiliyor — bekleyişin asıl sebebi bu).
+   *
+   * Yalnızca izin ZATEN verilmişse başlatılır. 'prompt' durumunda izin kutusunu
+   * bir dokunuş olmadan açmak iOS'ta sessiz redde yol açar ve kullanıcı hiç
+   * beklemediği bir kutuyu reddedebilir; o yüzden ilk izin isteği her zaman
+   * run() içinde, dokunuş canlıyken yapılır. Permissions API'si olmayan
+   * tarayıcılarda (iOS Safari) ısıtma yok — davranış eskisi gibi.
+   */
+  useEffect(() => {
+    if (!('geolocation' in navigator)) return
+    const perms = navigator.permissions
+    if (!perms?.query) return
+
+    let live = true
+    let watchId: number | null = null
+    let granted = false
+
+    const stop = () => {
+      if (watchId === null) return
+      navigator.geolocation.clearWatch(watchId)
+      watchId = null
+    }
+
+    const start = () => {
+      if (!live || !granted || watchId !== null || document.hidden) return
+      watchId = navigator.geolocation.watchPosition(
+        (pos) => {
+          if (!live) return
+          // Eldekini yalnızca hem taze hem daha hassassa koru; aksi halde
+          // yenisini al (bayat bir "iyi" sabitleme, taze bir kabadan kötüdür).
+          const prev = warmRef.current
+          const prevWins =
+            prev !== null &&
+            Date.now() - prev.timestamp <= FRESH_MS &&
+            prev.coords.accuracy < pos.coords.accuracy
+          if (!prevWins) {
+            warmRef.current = pos
+            setWarmAcc(Math.round(pos.coords.accuracy))
+          }
+        },
+        () => {
+          // ısıtma best-effort: sessizce vazgeç, asıl istek run() içinde
+        },
+        { enableHighAccuracy: true, maximumAge: 0 },
+      )
+    }
+
+    // Ekran arka plandayken yüksek hassasiyetli GPS'i açık tutmak pili boşuna
+    // yakar; görünür olunca yeniden ısıt (dönüşte sabitleme zaten tazelenir).
+    const onVisibility = () => {
+      if (document.hidden) stop()
+      else start()
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+
+    perms
+      .query({ name: 'geolocation' as PermissionName })
+      .then((s) => {
+        granted = s.state === 'granted'
+        if (granted) start()
+        // izin akış sırasında verilirse sonraki dokunuş için ısıtmayı başlat
+        s.addEventListener('change', () => {
+          granted = s.state === 'granted'
+          if (granted) start()
+          else stop()
+        })
+      })
+      .catch(() => {})
+
+    return () => {
+      live = false
+      document.removeEventListener('visibilitychange', onVisibility)
+      stop()
+    }
+  }, [])
+
   const acik = kayitlar[0]?.tip === 'GIRIS'
   const tip: 'GIRIS' | 'CIKIS' = acik ? 'CIKIS' : 'GIRIS'
   const sonGiris = kayitlar.find((k) => k.tip === 'GIRIS')
@@ -161,7 +264,8 @@ export default function Mesai() {
   function replaceLast(state: StepState, text?: string) {
     setSteps((s) => {
       const last = s[s.length - 1]
-      return [...s.slice(0, -1), { text: text ?? last.text, state }]
+      // last'ı yay: `live` gibi işaretler durum değişince düşmesin
+      return [...s.slice(0, -1), { ...last, text: text ?? last.text, state }]
     })
   }
 
@@ -169,21 +273,39 @@ export default function Mesai() {
     if (busy || !businessId) return
 
     // iOS only shows the geolocation prompt while the tap gesture is still
-    // "live". getCurrentPosition MUST be the very first thing the handler
-    // does — even a React state update before it can consume the gesture and
-    // then the prompt silently never appears. So we fire it before any
-    // setState / network work; its result is ignored if the office-network
-    // (static IP) check succeeds first.
-    const posPromise = 'geolocation' in navigator ? getPosition() : null
+    // "live". getPosition MUST be the very first thing the handler does — even
+    // a React state update before it can consume the gesture and then the
+    // prompt silently never appears. So we fire it before any setState /
+    // network work; its result is ignored if the office-network (static IP)
+    // check succeeds first.
+    //
+    // Isıtma taze ve yeterince hassas bir sabitleme yakaladıysa yeni bir
+    // watch başlatmaya gerek yok: kullanıcı hiç beklemez.
+    const warm = warmRef.current
+    const warmUsable =
+      warm !== null &&
+      Date.now() - warm.timestamp <= FRESH_MS &&
+      warm.coords.accuracy <= GOOD_ACCURACY_M
+        ? warm
+        : null
+    const posPromise = warmUsable
+      ? Promise.resolve(warmUsable)
+      : 'geolocation' in navigator
+        ? getPosition(setLiveAcc)
+        : null
     posPromise?.catch(() => {})
 
     setBusy(true)
     setSteps([])
     setBlocked(false)
+    setCoarse(null)
+    setLiveAcc(warmUsable ? Math.round(warmUsable.coords.accuracy) : null)
 
     try {
       push({ text: 'Ofis ağı (statik IP) kontrol ediliyor', state: 'run' })
-      const ipOk = await checkMesaiIp(businessId)
+      // IP'yi de paralel çek: ağ eşleşmezse ekranda görünür — yönetici,
+      // tanımlı IP ile personelin gerçek IP'sini tek bakışta karşılaştırır
+      const [ipOk, ip] = await Promise.all([checkMesaiIp(businessId), mesaiSuAnkiIp()])
       if (ipOk) {
         replaceLast('ok', 'Ofis ağında olduğunuz doğrulandı')
         await mesaiGirisCikis(businessId, tip, null, null)
@@ -191,14 +313,21 @@ export default function Mesai() {
         invalidate()
         return
       }
-      replaceLast('ok', 'Ofis ağı bulunamadı, konum kullanılacak')
+      replaceLast(
+        'ok',
+        ip ? `Ofis ağı bulunamadı (IP: ${ip}), konum kullanılacak` : 'Ofis ağı bulunamadı, konum kullanılacak',
+      )
 
       if (!posPromise) {
         push({ text: 'Bu cihaz konum desteklemiyor', state: 'err' })
         return
       }
 
-      push({ text: 'Konum alınıyor (izin isterse onaylayın)', state: 'run' })
+      push({
+        text: warmUsable ? 'Konum hazır' : 'Konum alınıyor (izin isterse onaylayın)',
+        state: 'run',
+        live: true,
+      })
       let pos: GeolocationPosition
       try {
         pos = await posPromise
@@ -215,13 +344,11 @@ export default function Mesai() {
 
       // GPS kilitlenemediyse tarayıcı Wi-Fi/baz istasyonu tahminine düşer;
       // böyle bir sabitlemeyle mesafe hesaplamak kullanıcıyı binadayken
-      // "uzakta" gösterir. Sunucuya göndermeden dur.
+      // "uzakta" gösterir. Sunucuya göndermeden dur, ipucu panelini aç.
       const dogruluk = Math.round(pos.coords.accuracy)
       if (dogruluk > MAX_ACCURACY_M) {
-        replaceLast(
-          'err',
-          `Konum yeterince hassas değil (±${dogruluk} m). GPS sinyali zayıf — pencere kenarına ya da açık alana çıkıp tekrar deneyin.`,
-        )
+        setCoarse(dogruluk)
+        replaceLast('err', `Konum yeterince hassas değil (±${dogruluk} m)`)
         return
       }
       replaceLast('ok', `Konum alındı (±${dogruluk} m)`)
@@ -319,7 +446,73 @@ export default function Mesai() {
           )}
           {busy ? 'Kontrol ediliyor…' : acik ? 'Çıkış Yap' : 'Giriş Yap'}
         </button>
+
+        {/* Isıtmanın durumu: dokunmadan önce GPS'in hazır olduğunu göster.
+            Yalnızca izin verilmiş cihazlarda ısıtma çalışır, o yüzden bu rozet
+            yoksa akış eskisi gibi dokunuşta konum ister. */}
+        {!busy && warmAcc !== null && (
+          <div className="mt-[10px] flex items-center justify-center gap-[6px]">
+            <span
+              className="h-[6px] w-[6px] rounded-full"
+              style={{
+                background:
+                  warmAcc <= GOOD_ACCURACY_M ? 'var(--color-success)' : 'var(--color-faint)',
+              }}
+            />
+            <span
+              className="text-[12px] font-medium"
+              style={{
+                color: warmAcc <= GOOD_ACCURACY_M ? 'var(--color-success)' : 'var(--color-faint)',
+              }}
+            >
+              {warmAcc <= GOOD_ACCURACY_M
+                ? `GPS hazır (±${warmAcc} m)`
+                : `GPS hazırlanıyor (±${warmAcc} m)`}
+            </span>
+          </div>
+        )}
       </div>
+
+      {/* Cihaz yalnızca kaba (Wi-Fi/baz istasyonu) konum verdiyse: nedeni ve
+          çözümü söyle. Aynı ±m değerinin her denemede tekrarlaması, Android'in
+          "Kesin konum" kapalıyken verdiği ızgaraya oturtulmuş tahminin tipik
+          işaretidir. */}
+      {coarse !== null && (
+        <div className="mx-6 mt-4 rounded-[18px] border border-[#F5D9A8] bg-[#FFF7ED] px-4 py-4">
+          <div className="mb-1 flex items-center gap-2">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#B45309" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="9" />
+              <line x1="12" y1="8" x2="12" y2="12" />
+              <line x1="12" y1="15.5" x2="12.01" y2="15.5" />
+            </svg>
+            <span className="text-[14px] font-bold text-[#B45309]">
+              Telefon hassas konum vermiyor (±{coarse} m)
+            </span>
+          </div>
+          <p className="mb-3 text-[12.5px] leading-relaxed text-[#7a5320]">
+            Cihaz GPS yerine yaklaşık (Wi-Fi/baz istasyonu) konum döndürüyor. Genellikle şu
+            ayarlardan kaynaklanır:
+          </p>
+          <ol className="flex flex-col gap-2">
+            {[
+              'Android: Ayarlar → Konum → Uygulama izinleri → tarayıcı (Chrome) → “Kesin konum” AÇIK olmalı',
+              'Pil tasarrufu modu kapalıyken deneyin (GPS kısıtlanabilir)',
+              'Mümkünse pencere kenarında ya da açık alanda birkaç saniye bekleyip tekrar deneyin',
+            ].map((t, i) => (
+              <li key={i} className="flex items-start gap-[10px]">
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#B45309] text-[11px] font-bold text-white">
+                  {i + 1}
+                </span>
+                <span className="text-[12.5px] leading-relaxed text-ink">{t}</span>
+              </li>
+            ))}
+          </ol>
+          <p className="mt-3 text-[12px] leading-relaxed text-[#7a5320]">
+            Kalıcı çözüm: yöneticiniz İşletme Ayarları'ndan ofis Wi-Fi ağını tanımlarsa, o ağa
+            bağlıyken giriş/çıkış konum gerektirmez.
+          </p>
+        </div>
+      )}
 
       {/* Konum izni engelliyse Ayarlar adımları (web uygulaması Ayarlar'ı
           kendisi açamaz — adımlar elle uygulanır) */}
@@ -360,21 +553,30 @@ export default function Mesai() {
         <div className="mx-6 mt-4 rounded-[18px] bg-card px-4 py-4">
           <div className="flex flex-col gap-[14px]">
             {steps.map((s, i) => (
-              <div key={i} className="flex items-center gap-3">
+              <div key={i} className="flex items-start gap-3">
                 <StepIcon state={s.state} />
-                <span
-                  className="text-[13.5px] font-medium"
-                  style={{
-                    color:
-                      s.state === 'err'
-                        ? 'var(--color-danger)'
-                        : s.state === 'ok'
-                          ? 'var(--color-ink)'
-                          : 'var(--color-muted)',
-                  }}
-                >
-                  {s.text}
-                </span>
+                <div className="min-w-0 flex-1">
+                  <span
+                    className="text-[13.5px] font-medium"
+                    style={{
+                      color:
+                        s.state === 'err'
+                          ? 'var(--color-danger)'
+                          : s.state === 'ok'
+                            ? 'var(--color-ink)'
+                            : 'var(--color-muted)',
+                    }}
+                  >
+                    {s.text}
+                  </span>
+                  {/* Canlı hassasiyet: beklerken ölü spinner yerine ±m'nin
+                      düştüğü görünür, yani "çalışıyor" hissi verir */}
+                  {s.live && s.state === 'run' && liveAcc !== null && (
+                    <div className="mt-[3px] text-[12px] font-medium text-faint">
+                      ±{liveAcc} m{liveAcc > GOOD_ACCURACY_M ? ' — iyileştiriliyor…' : ''}
+                    </div>
+                  )}
+                </div>
               </div>
             ))}
           </div>

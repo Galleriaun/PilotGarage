@@ -1,11 +1,10 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
 import { useBusiness } from '../../app/providers/BusinessProvider'
-import ConfirmDialog from '../../components/ui/ConfirmDialog'
 import { formatCreatedStamp } from '../../lib/dates'
 import { BackChevron } from '../auth/EyeIcon'
 import { TrashIcon } from '../yonetim/shared'
-import { useDeleteTrash, useRestoreTrash, useTrashItems, type TrashItem } from './api'
+import { useRestoreTrash, useTrashItems, type TrashItem } from './api'
 
 const TYPE_LABELS: Record<string, string> = {
   KAYIT: 'Kayıt',
@@ -22,8 +21,6 @@ export default function Cop() {
   const { activeBusiness } = useBusiness()
   const { data: items = [], isPending } = useTrashItems(activeBusiness?.id ?? '')
   const restore = useRestoreTrash()
-  const hardDelete = useDeleteTrash()
-  const [deleting, setDeleting] = useState<TrashItem | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [errors, setErrors] = useState<Record<string, string>>({})
 
@@ -40,17 +37,6 @@ export default function Cop() {
       }))
     } finally {
       setBusyId(null)
-    }
-  }
-
-  async function onConfirmDelete() {
-    if (!deleting) return
-    setBusyId(deleting.id)
-    try {
-      await hardDelete.mutateAsync({ id: deleting.id })
-    } finally {
-      setBusyId(null)
-      setDeleting(null)
     }
   }
 
@@ -108,14 +94,10 @@ export default function Cop() {
                 >
                   {busyId === t.id ? '…' : 'Geri al'}
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setDeleting(t)}
-                  disabled={busyId === t.id}
-                  className="shrink-0 cursor-pointer rounded-[10px] bg-danger-soft px-3 py-[7px] text-[13px] font-semibold text-danger disabled:opacity-50"
-                >
-                  Sil
-                </button>
+                {/* Kalıcı "Sil" butonu owner kararıyla gizlendi (2026-07-16):
+                    trash_delete RLS'i ve useDeleteTrash duruyor — buton geri
+                    eklenerek özellik açılabilir. Liste zaten en yeni 50 ile
+                    sınırlı; eski öğeler kendiliğinden düşer. */}
               </div>
               {errors[t.id] && (
                 <p className="mt-2 text-[12px] text-danger">{errors[t.id]}</p>
@@ -125,17 +107,6 @@ export default function Cop() {
         </div>
       )}
       <div className="h-10" />
-
-      <ConfirmDialog
-        open={deleting !== null}
-        title="Kalıcı olarak sil"
-        message={`"${deleting?.title ?? ''}" çöp kutusundan kalıcı olarak silinecek. Bu işlem geri alınamaz.`}
-        confirmLabel="Sil"
-        danger
-        busy={hardDelete.isPending}
-        onConfirm={() => void onConfirmDelete()}
-        onCancel={() => setDeleting(null)}
-      />
     </div>
   )
 }
