@@ -351,10 +351,19 @@ export default function Mesai() {
         if ((err as GeolocationPositionError | undefined)?.code === 1) {
           setBlocked(true)
           replaceLast('err', 'Konum izni kapalı')
+          return
+        }
+        // Deneme sırasında hiç sabitleme gelmedi (zaman aşımı/sinyal yok) ama
+        // ısıtma yakın zamanda bir sabitleme yakalamıştı — kaba da olsa onu
+        // kullan. Kaba sabitlemeler artık gönderildiğine göre, eldeki taze bir
+        // tahmini çöpe atıp "zaman aşımı" demek personeli boşuna kilitler.
+        const yedek = warmRef.current
+        if (yedek !== null && Date.now() - yedek.timestamp <= FRESH_MS) {
+          pos = yedek
         } else {
           replaceLast('err', geoErrorText(err))
+          return
         }
-        return
       }
 
       // Kaba (Wi-Fi/baz istasyonu) sabitleme de artık GÖNDERİLİR (owner kararı

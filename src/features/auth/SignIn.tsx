@@ -14,6 +14,7 @@ export default function SignIn() {
   const [error, setError] = useState('')
   const [info, setInfo] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [resetting, setResetting] = useState(false)
 
   if (loading) return <Splash />
   if (session) return <Navigate to="/" replace />
@@ -41,25 +42,45 @@ export default function SignIn() {
     })
     setSubmitting(false)
     if (signInError) {
-      setError('E-posta veya şifre hatalı.')
+      // Gerçek sebebi ayırt et: her hatayı "şifre hatalı" diye göstermek,
+      // doğrulanmamış e-posta / hız sınırı gibi durumlarda yanlış yere
+      // baktırıyordu (şifre doğruyken "hatalı" denmesi şikayeti).
+      const m = signInError.message.toLowerCase()
+      if (m.includes('not confirmed')) {
+        setError('E-postanız doğrulanmamış. Gelen kutunuzdaki doğrulama bağlantısına tıklayın.')
+      } else if (m.includes('rate limit') || m.includes('too many')) {
+        setError('Çok fazla deneme yapıldı. Birkaç dakika sonra tekrar deneyin.')
+      } else if (m.includes('invalid login credentials')) {
+        setError('E-posta veya şifre hatalı.')
+      } else {
+        setError('Giriş yapılamadı. Tekrar deneyin.')
+      }
     }
     // success: session updates -> the <Navigate> above redirects
   }
 
   async function onForgotPassword() {
+    // çift dokunuş koruması: istek uçtayken ikinci dokunuş ikinci bir
+    // e-posta gönderiyordu (ve eski bağlantıyı geçersiz kılıyordu)
+    if (resetting) return
     setError('')
     setInfo('')
     if (!email.trim()) {
       setError('Şifre sıfırlama için önce e-postanızı girin.')
       return
     }
-    const { error: resetError } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-      redirectTo: `${window.location.origin}${import.meta.env.BASE_URL}sifre-yenile`,
-    })
-    if (resetError) {
-      setError('Şifre sıfırlama e-postası gönderilemedi. Tekrar deneyin.')
-    } else {
-      setInfo('Şifre sıfırlama bağlantısı e-postanıza gönderildi.')
+    setResetting(true)
+    try {
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+        redirectTo: `${window.location.origin}${import.meta.env.BASE_URL}sifre-yenile`,
+      })
+      if (resetError) {
+        setError('Şifre sıfırlama e-postası gönderilemedi. Tekrar deneyin.')
+      } else {
+        setInfo('Şifre sıfırlama bağlantısı e-postanıza gönderildi.')
+      }
+    } finally {
+      setResetting(false)
     }
   }
 
@@ -103,9 +124,10 @@ export default function SignIn() {
           <button
             type="button"
             onClick={() => void onForgotPassword()}
-            className="cursor-pointer text-sm text-muted"
+            disabled={resetting}
+            className="cursor-pointer text-sm text-muted disabled:opacity-60"
           >
-            Şifremi unuttum
+            {resetting ? 'Gönderiliyor…' : 'Şifremi unuttum'}
           </button>
         </div>
         {error && <p className="mb-3 text-center text-sm text-danger">{error}</p>}
