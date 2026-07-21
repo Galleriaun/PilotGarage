@@ -1,15 +1,30 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 import { useNavigate, useSearchParams } from 'react-router'
+import { useAuth } from '../../app/providers/AuthProvider'
 import { useBusiness } from '../../app/providers/BusinessProvider'
 import ConfirmDialog from '../../components/ui/ConfirmDialog'
+import { rpcErrorText } from '../../lib/errors'
 import { formatTL } from '../../lib/money'
 import { BackChevron } from '../auth/EyeIcon'
 import { CalendarIcon, CheckSmallIcon, ChevronDownIcon, SearchIcon } from '../kayit/icons'
 import TxCard from './TxCard'
-import { useApprovedIslemler, useDeleteIslem, useKategoriler } from './api'
-import { inRange, periodRange, type DateRange } from './selectors'
-import type { Islem } from './types'
+import {
+  useApprovedIslemler,
+  useDeleteIslem,
+  useKategoriler,
+  useOnayaGeriGonder,
+  useTransferGeriAl,
+} from './api'
+import {
+  inRange,
+  isTransfer,
+  isTransferEs,
+  onayaGeriGonderilebilir,
+  periodRange,
+  type DateRange,
+} from './selectors'
+import { ODEME_YONTEMI_LABELS, type Islem } from './types'
 
 type TurFilter = 'TUMU' | 'GELIR' | 'GIDER'
 type CalendarFilter =
@@ -123,13 +138,58 @@ export default function TumIslemler() {
   })
   const [deleting, setDeleting] = useState<Islem | null>(null)
   const deleteIslem = useDeleteIslem()
+  // Yönetici-only (040): onaylı işlemi tekrar Onay kuyruğuna döndür
+  const { profile } = useAuth()
+  const isYonetici = profile?.role === 'YONETICI'
+  const [onayaGonderilecek, setOnayaGonderilecek] = useState<Islem | null>(null)
+  const onayaGeriGonder = useOnayaGeriGonder()
+  // 042: aynı geri-ok butonu TRANSFER satırlarında "Transferi Geri Al" olur
+  const [geriAlinacak, setGeriAlinacak] = useState<Islem | null>(null)
+  const transferGeriAl = useTransferGeriAl()
+  // zaten geri alınmış aktarımlar (iade satırının işaret ettiği id'ler) —
+  // dönem filtresinden BAĞIMSIZ tam listeden hesaplanır, yoksa filtre dışındaki
+  // bir iade görünmez ve buton yanlışlıkla tekrar çıkardı
+  const iadeEdilmis = useMemo(
+    // `!= null`: kolon okunamazsa (migration 042 yoksa) undefined gelir ve
+    // katı `!== null` onu kümeye sokardı
+    () => new Set(islemler.map((i) => i.iade_of).filter((id): id is string => id != null)),
+    [islemler],
+  )
+
+  // RPC reddi diyaloğu kapatmaz: sunucunun Türkçe mesajı (ör. "Geri alınmış
+  // aktarım silinemez") diyalogda görünür — eskiden sessizce yutulurdu.
+  const [dialogError, setDialogError] = useState('')
 
   async function onConfirmDelete() {
     if (!deleting) return
+    setDialogError('')
     try {
       await deleteIslem.mutateAsync({ islemId: deleting.id })
-    } finally {
       setDeleting(null)
+    } catch (err) {
+      setDialogError(rpcErrorText(err, 'İşlem silinemedi. Tekrar deneyin.'))
+    }
+  }
+
+  async function onConfirmOnayaGonder() {
+    if (!onayaGonderilecek) return
+    setDialogError('')
+    try {
+      await onayaGeriGonder.mutateAsync({ islemId: onayaGonderilecek.id })
+      setOnayaGonderilecek(null)
+    } catch (err) {
+      setDialogError(rpcErrorText(err, 'Onaya gönderilemedi. Tekrar deneyin.'))
+    }
+  }
+
+  async function onConfirmGeriAl() {
+    if (!geriAlinacak) return
+    setDialogError('')
+    try {
+      await transferGeriAl.mutateAsync({ islemId: geriAlinacak.id })
+      setGeriAlinacak(null)
+    } catch (err) {
+      setDialogError(rpcErrorText(err, 'Transfer geri alınamadı. Tekrar deneyin.'))
     }
   }
 
@@ -151,13 +211,23 @@ export default function TumIslemler() {
   let kkNet = 0
   let havaleNet = 0
   for (const i of filtered) {
-    if (i.tur === 'GELIR') gelir += i.kurus
-    else gider += i.kurus
+    // Transfer iç aktarım: Gelir/Gider toplamlarına GİRMEZ (ciro şişmesin),
+    // ama kovalar arasında para gerçekten taşındığı için split'e GİRER (041)
+    if (!isTransfer(i)) {
+      if (i.tur === 'GELIR') gelir += i.kurus
+      else gider += i.kurus
+    }
     const signed = i.tur === 'GELIR' ? i.kurus : -i.kurus
     if (i.odeme_yontemi === 'NAKIT') nakitNet += signed
     else if (i.odeme_yontemi === 'KREDI_KARTI') kkNet += signed
     else if (i.odeme_yontemi === 'HAVALE') havaleNet += signed
   }
+
+  // Listede transfer TEK satır: eş bacak (KK girişi) gizlenir. Gelir/Gider
+  // süzgeçlerinde transfer hiç görünmez — toplamlarına da girmiyor.
+  const visible = filtered.filter(
+    (i) => !isTransferEs(i) && (turFilter === 'TUMU' || !isTransfer(i)),
+  )
 
   // kategori menu follows the tur filter (Gider -> only gider categories)
   const shownKategoriler =
@@ -297,34 +367,50 @@ export default function TumIslemler() {
           />
         </div>
 
-        {/* Summary */}
+        {/* Summary — mobilde satırlar sarmalar (tam sayılar görünsün diye);
+            masaüstünde tek satır. Kredi Kartı mobilde "Kredi K." */}
         <div className="mb-4 rounded-[14px] bg-[linear-gradient(150deg,#1C1C1E,#0A0A0A)] px-4 py-3">
-          <div className="flex items-center gap-[18px]">
-            <div className="flex items-baseline gap-1">
+          <div className="flex flex-wrap items-baseline gap-x-[18px] gap-y-[6px]">
+            <div className="flex shrink-0 items-baseline gap-1">
               <span className="text-xs font-semibold text-white/55">Toplam:</span>
-              <span className="text-[13px] font-bold text-white">{formatTL(gelir - gider)}</span>
+              <span className="whitespace-nowrap text-[13px] font-bold text-white">
+                {formatTL(gelir - gider)}
+              </span>
             </div>
-            <div className="flex items-baseline gap-1">
+            <div className="flex shrink-0 items-baseline gap-1">
               <span className="text-xs font-semibold text-white/55">Gelir:</span>
-              <span className="text-[13px] font-bold text-[#4ADE80]">{formatTL(gelir)}</span>
+              <span className="whitespace-nowrap text-[13px] font-bold text-[#4ADE80]">
+                {formatTL(gelir)}
+              </span>
             </div>
-            <div className="flex items-baseline gap-1">
+            <div className="flex shrink-0 items-baseline gap-1">
               <span className="text-xs font-semibold text-white/55">Gider:</span>
-              <span className="text-[13px] font-bold text-[#F87171]">{formatTL(gider)}</span>
+              <span className="whitespace-nowrap text-[13px] font-bold text-[#F87171]">
+                {formatTL(gider)}
+              </span>
             </div>
           </div>
-          <div className="mt-2 flex items-center gap-[18px] border-t border-white/10 pt-2">
-            <div className="flex items-baseline gap-1">
+          <div className="mt-2 flex flex-wrap items-baseline gap-x-[18px] gap-y-[6px] border-t border-white/10 pt-2">
+            <div className="flex shrink-0 items-baseline gap-1">
               <span className="text-xs font-semibold text-white/55">Nakit:</span>
-              <span className="text-[13px] font-bold text-[#4ADE80]">{formatTL(nakitNet)}</span>
+              <span className="whitespace-nowrap text-[13px] font-bold text-[#4ADE80]">
+                {formatTL(nakitNet)}
+              </span>
             </div>
-            <div className="flex items-baseline gap-1">
-              <span className="text-xs font-semibold text-white/55">Kredi Kartı:</span>
-              <span className="text-[13px] font-bold text-[#60A5FA]">{formatTL(kkNet)}</span>
+            <div className="flex shrink-0 items-baseline gap-1">
+              <span className="text-xs font-semibold text-white/55">
+                <span className="md:hidden">Kredi K.:</span>
+                <span className="hidden md:inline">Kredi Kartı:</span>
+              </span>
+              <span className="whitespace-nowrap text-[13px] font-bold text-[#60A5FA]">
+                {formatTL(kkNet)}
+              </span>
             </div>
-            <div className="flex items-baseline gap-1">
+            <div className="flex shrink-0 items-baseline gap-1">
               <span className="text-xs font-semibold text-white/55">Havale:</span>
-              <span className="text-[13px] font-bold text-[#C4B5FD]">{formatTL(havaleNet)}</span>
+              <span className="whitespace-nowrap text-[13px] font-bold text-[#C4B5FD]">
+                {formatTL(havaleNet)}
+              </span>
             </div>
           </div>
         </div>
@@ -336,7 +422,7 @@ export default function TumIslemler() {
           </div>
         ) : isError ? (
           <p className="py-10 text-center text-sm text-danger">İşlemler yüklenemedi.</p>
-        ) : filtered.length === 0 ? (
+        ) : visible.length === 0 ? (
           <div className="flex flex-col items-center px-6 py-12 text-center">
             <div className="mb-[14px] flex h-[52px] w-[52px] items-center justify-center rounded-[16px] bg-field">
               <SearchIcon />
@@ -346,8 +432,39 @@ export default function TumIslemler() {
           </div>
         ) : (
           <div className="flex flex-col gap-[10px]">
-            {filtered.map((i) => (
-              <TxCard key={i.id} islem={i} variant="gray" onDelete={() => setDeleting(i)} />
+            {visible.map((i) => (
+              <TxCard
+                key={i.id}
+                islem={i}
+                variant="gray"
+                onDelete={() => {
+                  setDialogError('')
+                  setDeleting(i)
+                }}
+                // Aynı geri-ok butonu iki iş yapar (yalnızca Yönetici):
+                //  • TRANSFER  → Transferi Geri Al (ters yönde aktarım, 042);
+                //    zaten geri alınmışsa ve geri alma satırının kendisinde yok
+                //  • diğerleri → Onaya Geri Gönder (040); YALNIZCA gerçekten
+                //    Onay'dan geçmiş satırlarda (onayaGeriGonderilebilir):
+                //    komisyon / PERSONEL / sabit gider / tekrar hariç
+                onOnayaGonder={
+                  !isYonetici
+                    ? undefined
+                    : isTransfer(i)
+                      ? i.iade_of == null && !iadeEdilmis.has(i.id)
+                        ? () => {
+                            setDialogError('')
+                            setGeriAlinacak(i)
+                          }
+                        : undefined
+                      : onayaGeriGonderilebilir(i)
+                        ? () => {
+                            setDialogError('')
+                            setOnayaGonderilecek(i)
+                          }
+                        : undefined
+                }
+              />
             ))}
           </div>
         )}
@@ -356,13 +473,46 @@ export default function TumIslemler() {
 
       <ConfirmDialog
         open={deleting !== null}
-        title="İşlemi sil"
-        message="Bu işlemi silmek istiyor musunuz?"
+        title={deleting && isTransfer(deleting) ? 'Aktarımı sil' : 'İşlemi sil'}
+        message={
+          deleting && isTransfer(deleting)
+            ? 'Bu aktarım kayıtlardan tamamen silinecek ve çöp kutusuna düşmez. Geçmişi korumak için silmek yerine geri-ok ile "Transferi Geri Al" yapabilirsiniz.'
+            : 'Bu işlemi silmek istiyor musunuz?'
+        }
         confirmLabel="Sil"
         danger
         busy={deleteIslem.isPending}
+        error={dialogError}
         onConfirm={() => void onConfirmDelete()}
         onCancel={() => setDeleting(null)}
+      />
+
+      <ConfirmDialog
+        open={onayaGonderilecek !== null}
+        title="Onaya Geri Gönder"
+        message="Bu işlemi tekrar onaya göndermek ister misiniz?"
+        confirmLabel="Gönder"
+        busy={onayaGeriGonder.isPending}
+        error={dialogError}
+        onConfirm={() => void onConfirmOnayaGonder()}
+        onCancel={() => setOnayaGonderilecek(null)}
+      />
+
+      <ConfirmDialog
+        open={geriAlinacak !== null}
+        title="Transferi Geri Al"
+        message={
+          geriAlinacak
+            ? `${formatTL(geriAlinacak.kurus)} ${
+                ODEME_YONTEMI_LABELS[geriAlinacak.odeme_yontemi ?? 'NAKIT']
+              } hesabına geri dönecek. Onaylıyor musunuz?`
+            : ''
+        }
+        confirmLabel="Geri Al"
+        busy={transferGeriAl.isPending}
+        error={dialogError}
+        onConfirm={() => void onConfirmGeriAl()}
+        onCancel={() => setGeriAlinacak(null)}
       />
 
       {/* Tarih aralığı modal */}

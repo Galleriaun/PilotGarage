@@ -4,7 +4,13 @@ import { useAuth } from '../../app/providers/AuthProvider'
 import { useBusiness } from '../../app/providers/BusinessProvider'
 import { formatTL, numericStringToKurus, parseTLToKurus } from '../../lib/money'
 import type { Profile, Role } from '../../lib/types'
-import { useApproveSignup, useBekleyenIstekTurleri, useMembers, usePendingProfiles } from './api'
+import {
+  useAktifIzinProfilleri,
+  useApproveSignup,
+  useBekleyenIstekTurleri,
+  useMembers,
+  usePendingProfiles,
+} from './api'
 import { ROLE_LABELS, ROLE_OPTIONS, type IstekTur } from './types'
 import {
   Avatar,
@@ -181,9 +187,15 @@ export default function PersonelList() {
   const isYonetici = me?.role === 'YONETICI'
 
   const { data: members = [], isPending } = useMembers(businessId)
+  // 048: bugün izinde olanlar — kartta turuncu "İzinde" rozeti
+  const { data: izindekiler = new Set<string>() } = useAktifIzinProfilleri(businessId)
   const { data: pendingProfiles = [] } = usePendingProfiles(isYonetici)
-  // red dot on the İstekler button when any istek is waiting (037)
-  const { data: bekleyenIstek = new Set<IstekTur>() } = useBekleyenIstekTurleri(businessId)
+  // red dot on the İstekler button when any istek is waiting (037).
+  // 046: yalnızca Yönetici — Muhasebe için hiç sorgulanmaz (RLS zaten boş
+  // dönerdi, ama gereksiz istek atmayalım)
+  const { data: bekleyenIstek = new Set<IstekTur>() } = useBekleyenIstekTurleri(
+    isYonetici ? businessId : '',
+  )
   const [approving, setApproving] = useState<Profile | null>(null)
 
   // "Personel X işletmesine taşındı" — set when İşletme Erişimi removed this
@@ -207,6 +219,8 @@ export default function PersonelList() {
         iconBg="#F0FDF4"
         backTo="/yonetim"
         right={
+          // İstekler 046'dan beri yalnızca Yönetici'nin (Muhasebe hiç görmez)
+          !isYonetici ? undefined : (
           <button
             type="button"
             onClick={() => void navigate('/yonetim/istekler')}
@@ -230,6 +244,7 @@ export default function PersonelList() {
               <span className="absolute -right-[3px] -top-[3px] h-[11px] w-[11px] rounded-full border-2 border-white bg-[#E53935]" />
             )}
           </button>
+          )
         }
       />
 
@@ -296,12 +311,20 @@ export default function PersonelList() {
                 <div className="truncate text-[15px] font-bold text-ink">
                   {m.profile.full_name || 'İsimsiz'}
                 </div>
-                <div className="mt-[2px] text-[13px] text-muted">
-                  {m.profile.status === 'DISABLED'
-                    ? 'Devre dışı'
-                    : m.profile.role
-                      ? ROLE_LABELS[m.profile.role]
-                      : '—'}
+                <div className="mt-[2px] flex items-center gap-[6px] text-[13px] text-muted">
+                  <span>
+                    {m.profile.status === 'DISABLED'
+                      ? 'Devre dışı'
+                      : m.profile.role
+                        ? ROLE_LABELS[m.profile.role]
+                        : '—'}
+                  </span>
+                  {izindekiler.has(m.profile_id) && (
+                    <span className="flex shrink-0 items-center gap-[4px]">
+                      <span className="h-[6px] w-[6px] rounded-full bg-warn" />
+                      <span className="font-semibold text-warn">İzinde</span>
+                    </span>
+                  )}
                 </div>
               </div>
               <div className="shrink-0 text-right">

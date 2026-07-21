@@ -29,6 +29,7 @@ const Yonetim = lazy(() => import('./features/finans/Yonetim'))
 const Paketler = lazy(() => import('./features/yonetim/Paketler'))
 const PersonelList = lazy(() => import('./features/yonetim/PersonelList'))
 const PersonelDetay = lazy(() => import('./features/yonetim/PersonelDetay'))
+const PersonelIzinler = lazy(() => import('./features/yonetim/PersonelIzinler'))
 const Istekler = lazy(() => import('./features/yonetim/Istekler'))
 const Isletmeler = lazy(() => import('./features/yonetim/Isletmeler'))
 const IsletmeDetay = lazy(() => import('./features/yonetim/IsletmeDetay'))
@@ -73,15 +74,21 @@ export default function App() {
                     <Route path="/yonetici" element={<YoneticiHome />} />
                     <Route path="/yonetim" element={<Yonetim />} />
                     <Route path="/yonetim/islemler" element={<TumIslemler />} />
-                    <Route path="/yonetim/onay" element={<Onay />} />
+                    {/* Yalnızca Yönetici — RPC'ler ve RLS de öyle; Muhasebe
+                        adresi elle yazarsa kendi ana ekranına döner.
+                        Onay (044), İstekler (046), İşletme Ayarları (047). */}
+                    <Route element={<RequireRole roles={['YONETICI']} />}>
+                      <Route path="/yonetim/onay" element={<Onay />} />
+                      <Route path="/yonetim/istekler" element={<Istekler />} />
+                      <Route path="/yonetim/ayarlar" element={<IsletmeAyarlari />} />
+                    </Route>
                     <Route path="/yonetim/paketler" element={<Paketler />} />
                     <Route path="/yonetim/personel" element={<PersonelList />} />
                     <Route path="/yonetim/personel/:id" element={<PersonelDetay />} />
-                    <Route path="/yonetim/istekler" element={<Istekler />} />
+                    <Route path="/yonetim/personel/:id/izinler" element={<PersonelIzinler />} />
                     <Route path="/yonetim/isletmeler" element={<Isletmeler />} />
                     <Route path="/yonetim/isletmeler/:id" element={<IsletmeDetay />} />
                     <Route path="/yonetim/sabit-giderler" element={<SabitGiderler />} />
-                    <Route path="/yonetim/ayarlar" element={<IsletmeAyarlari />} />
                     <Route path="/yonetim/cop" element={<Cop />} />
                     <Route path="/yonetim/mesai" element={<MesaiKayitlari />} />
                     <Route path="/yonetim/mesai/:personelId" element={<MesaiPersonelDetay />} />

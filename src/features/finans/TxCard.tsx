@@ -1,11 +1,24 @@
 import { formatCreatedStamp, formatRelativeDate } from '../../lib/dates'
 import { formatTL } from '../../lib/money'
+import type { OdemeYontemi } from '../../lib/types'
 import { ODEME_YONTEMI_CHIP, ODEME_YONTEMI_LABELS, type Islem } from './types'
 
-type IconKind = 'car' | 'wrench' | 'building' | 'users' | 'shield'
+function YontemChip({ y }: { y: OdemeYontemi }) {
+  return (
+    <span
+      className="shrink-0 rounded-[6px] px-[7px] py-[2px] text-[10.5px] font-semibold"
+      style={{ background: ODEME_YONTEMI_CHIP[y].bg, color: ODEME_YONTEMI_CHIP[y].color }}
+    >
+      {ODEME_YONTEMI_LABELS[y]}
+    </span>
+  )
+}
+
+type IconKind = 'car' | 'wrench' | 'building' | 'users' | 'shield' | 'transfer'
 
 /** Prototype's icon mapping: income -> car; expense by kategori label. */
 function iconKind(islem: Islem): IconKind {
+  if (islem.kaynak === 'TRANSFER') return 'transfer'
   if (islem.tur === 'GELIR') return 'car'
   switch (islem.kategori?.label) {
     case 'Parça Tedariki':
@@ -68,6 +81,15 @@ export function TxIcon({ kind, color = '#555' }: { kind: IconKind; color?: strin
           <path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6l8-4z" />
         </svg>
       )
+    case 'transfer':
+      return (
+        <svg {...common}>
+          <polyline points="17 3 21 7 17 11" />
+          <path d="M21 7H8a4 4 0 00-4 4" />
+          <polyline points="7 21 3 17 7 13" />
+          <path d="M3 17h13a4 4 0 004-4" />
+        </svg>
+      )
   }
 }
 
@@ -84,17 +106,36 @@ function TrashSmallIcon() {
   )
 }
 
+/** Geri-al tarzı köşeli geri ok — onaya geri gönder (040). */
+function UndoSmallIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#555" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="9 14 4 9 9 4" />
+      <path d="M20 20v-7a4 4 0 00-4-4H4" />
+    </svg>
+  )
+}
+
 /** Transaction row — white variant on Yönetim, gray on Tüm İşlemler.
- *  `onDelete` adds a trash button (finance screens). */
+ *  `onDelete` adds a trash button (finance screens); `onOnayaGonder`
+ *  adds the Yönetici-only "onaya geri gönder" undo button (040). */
 export default function TxCard({
   islem,
   variant,
   onDelete,
+  onOnayaGonder,
 }: {
   islem: Islem
   variant: 'white' | 'gray'
   onDelete?: () => void
+  onOnayaGonder?: () => void
 }) {
+  // Transfer (041): ne gelir ne gider — nötr renk, işaretsiz tutar ve
+  // "kaynak → hedef" çift çipi. Yön ana bacağın yönteminden türetilir:
+  // geri alma (042) ters yönde olduğu için çipler sabitlenemez.
+  const transfer = islem.kaynak === 'TRANSFER'
+  const kaynakYontem: OdemeYontemi = islem.odeme_yontemi ?? 'NAKIT'
+  const hedefYontem: OdemeYontemi = kaynakYontem === 'NAKIT' ? 'KREDI_KARTI' : 'NAKIT'
   return (
     <div
       className={
@@ -120,16 +161,14 @@ export default function TxCard({
               {islem.kategori.label}
             </span>
           )}
-          {islem.odeme_yontemi && (
-            <span
-              className="shrink-0 rounded-[6px] px-[7px] py-[2px] text-[10.5px] font-semibold"
-              style={{
-                background: ODEME_YONTEMI_CHIP[islem.odeme_yontemi].bg,
-                color: ODEME_YONTEMI_CHIP[islem.odeme_yontemi].color,
-              }}
-            >
-              {ODEME_YONTEMI_LABELS[islem.odeme_yontemi]}
+          {transfer ? (
+            <span className="flex shrink-0 items-center gap-[4px]">
+              <YontemChip y={kaynakYontem} />
+              <span className="text-[11px] font-bold text-faint">→</span>
+              <YontemChip y={hedefYontem} />
             </span>
+          ) : (
+            islem.odeme_yontemi && <YontemChip y={islem.odeme_yontemi} />
           )}
         </div>
         <div className="mt-[4px] flex min-w-0 items-center gap-[10px] text-[11px] text-faint">
@@ -145,10 +184,26 @@ export default function TxCard({
       </div>
       <div
         className="shrink-0 text-sm font-bold"
-        style={{ color: islem.tur === 'GELIR' ? '#15803D' : '#C62828' }}
+        style={{
+          color: transfer
+            ? 'var(--color-ink)'
+            : islem.tur === 'GELIR'
+              ? '#15803D'
+              : '#C62828',
+        }}
       >
-        {amountLabel(islem)}
+        {transfer ? formatTL(islem.kurus) : amountLabel(islem)}
       </div>
+      {onOnayaGonder && (
+        <button
+          type="button"
+          onClick={onOnayaGonder}
+          aria-label="Onaya geri gönder"
+          className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-[9px] bg-field"
+        >
+          <UndoSmallIcon />
+        </button>
+      )}
       {onDelete && (
         <button
           type="button"

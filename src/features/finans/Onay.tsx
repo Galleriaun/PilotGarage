@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router'
 import { useBusiness } from '../../app/providers/BusinessProvider'
 import ConfirmDialog from '../../components/ui/ConfirmDialog'
+import KomisyonBankaSecici from '../../components/ui/KomisyonBankaSecici'
 import { formatCreatedStamp, formatRelativeDate } from '../../lib/dates'
 import { formatTL, kurusToNumericString, numericStringToKurus, parseTLToKurus } from '../../lib/money'
 import type { OdemeYontemi } from '../../lib/types'
@@ -22,13 +23,15 @@ import {
   type KayitSilmeTalebi,
 } from './types'
 
-type FilterKey = 'TUMU' | 'MANUEL' | 'KAYIT' | 'CARI_HESAP' | 'SILME'
+type FilterKey = 'TUMU' | 'MANUEL' | 'KAYIT' | 'CARI_HESAP' | 'PERSONEL' | 'SILME'
 type ManuelTur = 'TUMU' | 'GELIR' | 'GIDER'
 const FILTERS: { key: FilterKey; label: string }[] = [
   { key: 'TUMU', label: 'Tümü' },
   { key: 'MANUEL', label: 'Manuel' },
   { key: 'KAYIT', label: 'Kayıt' },
   { key: 'CARI_HESAP', label: 'İşletme' },
+  // 045: avans + prim (maaş born-ONAYLANDI, buraya hiç düşmez)
+  { key: 'PERSONEL', label: 'Personel' },
   { key: 'SILME', label: 'Kayıt Silme' },
 ]
 const MANUEL_TURLER: { key: ManuelTur; label: string }[] = [
@@ -43,6 +46,9 @@ const SOURCE_META: Record<IslemKaynak, { label: string; bg: string; color: strin
   MANUEL: { label: 'Manuel', bg: '#F5F0FF', color: '#7C3AED' },
   SABIT_GIDER: { label: 'Sabit Gider', bg: '#F0FDF4', color: '#15803D' },
   PERSONEL: { label: 'Personel', bg: '#FEF3F2', color: '#C62828' },
+  // Transfer born-ONAYLANDI doğar, Onay ekranına hiç düşmez — map'in
+  // eksiksiz kalması için burada (041)
+  TRANSFER: { label: 'Aktarım', bg: '#F2F2F2', color: '#555555' },
 }
 
 const YONTEM_CHIP: Record<OdemeYontemi, { label: string; bg: string; color: string }> = {
@@ -149,6 +155,11 @@ function OnayCard({
       {/* KK komisyonu (033): onayda ayrı gider olarak düşülür */}
       {!preset && yontem === 'KREDI_KARTI' && (
         <div className="mt-2">
+          <KomisyonBankaSecici
+            baseKurus={islem.kurus}
+            komisyon={komisyon}
+            onKomisyon={setKomisyon}
+          />
           <input
             type="text"
             inputMode="decimal"
@@ -267,7 +278,8 @@ export default function Onay() {
   const [filter, setFilter] = useState<FilterKey>('TUMU')
   const [manuelTur, setManuelTur] = useState<ManuelTur>('TUMU')
 
-  const showBar = filter === 'MANUEL' || filter === 'KAYIT' || filter === 'CARI_HESAP'
+  const showBar =
+    filter === 'MANUEL' || filter === 'KAYIT' || filter === 'CARI_HESAP' || filter === 'PERSONEL'
 
   const shownSilme =
     filter === 'TUMU' || filter === 'SILME' ? silmeTalepleri : []
@@ -455,36 +467,47 @@ export default function Onay() {
           }
           return (
             <div className="mx-6 mt-4 rounded-[14px] bg-[linear-gradient(150deg,#1C1C1E,#0A0A0A)] px-4 py-3">
-              <div className="flex items-center gap-[18px]">
-                <div className="flex items-baseline gap-1">
+              {/* mobilde satırlar sarmalar (tam sayılar görünsün); masaüstünde
+                  tek satır. Kredi Kartı mobilde "Kredi K." */}
+              <div className="flex flex-wrap items-baseline gap-x-[18px] gap-y-[6px]">
+                <div className="flex shrink-0 items-baseline gap-1">
                   <span className="text-xs font-semibold text-white/55">Toplam:</span>
-                  <span className="text-[13px] font-bold text-white">
+                  <span className="whitespace-nowrap text-[13px] font-bold text-white">
                     {formatTL(gelir - gider)}
                   </span>
                 </div>
-                <div className="flex items-baseline gap-1">
+                <div className="flex shrink-0 items-baseline gap-1">
                   <span className="text-xs font-semibold text-white/55">Gelir:</span>
-                  <span className="text-[13px] font-bold text-[#4ADE80]">{formatTL(gelir)}</span>
+                  <span className="whitespace-nowrap text-[13px] font-bold text-[#4ADE80]">
+                    {formatTL(gelir)}
+                  </span>
                 </div>
-                <div className="flex items-baseline gap-1">
+                <div className="flex shrink-0 items-baseline gap-1">
                   <span className="text-xs font-semibold text-white/55">Gider:</span>
-                  <span className="text-[13px] font-bold text-[#F87171]">{formatTL(gider)}</span>
+                  <span className="whitespace-nowrap text-[13px] font-bold text-[#F87171]">
+                    {formatTL(gider)}
+                  </span>
                 </div>
               </div>
-              <div className="mt-2 flex items-center gap-[18px] border-t border-white/10 pt-2">
-                <div className="flex items-baseline gap-1">
+              <div className="mt-2 flex flex-wrap items-baseline gap-x-[18px] gap-y-[6px] border-t border-white/10 pt-2">
+                <div className="flex shrink-0 items-baseline gap-1">
                   <span className="text-xs font-semibold text-white/55">Nakit:</span>
-                  <span className="text-[13px] font-bold text-[#4ADE80]">
+                  <span className="whitespace-nowrap text-[13px] font-bold text-[#4ADE80]">
                     {formatTL(nakitNet)}
                   </span>
                 </div>
-                <div className="flex items-baseline gap-1">
-                  <span className="text-xs font-semibold text-white/55">Kredi Kartı:</span>
-                  <span className="text-[13px] font-bold text-[#60A5FA]">{formatTL(kkNet)}</span>
+                <div className="flex shrink-0 items-baseline gap-1">
+                  <span className="text-xs font-semibold text-white/55">
+                    <span className="md:hidden">Kredi K.:</span>
+                    <span className="hidden md:inline">Kredi Kartı:</span>
+                  </span>
+                  <span className="whitespace-nowrap text-[13px] font-bold text-[#60A5FA]">
+                    {formatTL(kkNet)}
+                  </span>
                 </div>
-                <div className="flex items-baseline gap-1">
+                <div className="flex shrink-0 items-baseline gap-1">
                   <span className="text-xs font-semibold text-white/55">Havale:</span>
-                  <span className="text-[13px] font-bold text-[#C4B5FD]">
+                  <span className="whitespace-nowrap text-[13px] font-bold text-[#C4B5FD]">
                     {formatTL(havaleNet)}
                   </span>
                 </div>

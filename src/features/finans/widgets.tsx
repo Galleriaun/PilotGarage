@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { formatDayMonth, nextOccurrenceISO, TR_MONTHS, TR_MONTHS_FULL } from '../../lib/dates'
 import { formatTL, numericStringToKurus } from '../../lib/money'
+import { isTransfer } from './selectors'
 import type { Islem, SabitGider, TekrarKural } from './types'
 
 // ── Nakit Akışı ──────────────────────────────────────────────
@@ -20,6 +21,8 @@ export function useCashFlowMonths(islemler: Islem[], year: number): MonthAgg[] {
     }))
     const prefix = `${year}-`
     for (const i of islemler) {
+      // transfer iç aktarım — gelir/gider barlarını şişirmesin (041)
+      if (isTransfer(i)) continue
       if (!i.islem_tarihi.startsWith(prefix)) continue
       const m = Number(i.islem_tarihi.slice(5, 7)) - 1
       const agg = months[m]
@@ -44,8 +47,9 @@ export function CashFlowCard({
   onSelectMonth: (m: number) => void
   onSeeMonth: () => void
 }) {
-  const maxIncome = Math.max(1, ...months.map((m) => m.income))
-  const maxExpense = Math.max(1, ...months.map((m) => m.expense))
+  // Gelir ve gider aynı ölçeğe göre çizilir — yoksa her seri kendi tepesine
+  // bölünür ve büyük gelir + küçük gider aynı boyda görünür (oranı yansıtmaz)
+  const maxVal = Math.max(1, ...months.map((m) => Math.max(m.income, m.expense)))
   const selected = months[selectedMonth - 1] ?? { month: selectedMonth, income: 0, expense: 0 }
   const monthName = TR_MONTHS_FULL[selectedMonth - 1]
 
@@ -76,14 +80,14 @@ export function CashFlowCard({
                   <div
                     className="w-full max-w-[22px] rounded-t-[5px] rounded-b-[2px]"
                     style={{
-                      height: `${Math.max((m.income / maxIncome) * 42, 4)}px`,
+                      height: `${Math.max((m.income / maxVal) * 42, 4)}px`,
                       background: isSelected ? '#22C55E' : '#C8EFD8',
                     }}
                   />
                   <div
                     className="w-full max-w-[22px] rounded-t-[2px] rounded-b-[5px]"
                     style={{
-                      height: `${Math.max((m.expense / maxExpense) * 42, 4)}px`,
+                      height: `${Math.max((m.expense / maxVal) * 42, 4)}px`,
                       background: isSelected ? '#EF4444' : '#FBDCDC',
                     }}
                   />
@@ -157,6 +161,9 @@ export function SpendingCard({
     const byLabel = new Map<string, number>()
     let total = 0
     for (const i of islemler) {
+      // transferin nakit bacağı kategorisiz bir GİDER'dir — "Diğer" harcama
+      // gibi görünmesin (041)
+      if (isTransfer(i)) continue
       if (i.tur !== 'GIDER' || !i.islem_tarihi.startsWith(prefix)) continue
       const label = i.kategori?.label ?? 'Diğer'
       byLabel.set(label, (byLabel.get(label) ?? 0) + i.kurus)
@@ -190,7 +197,7 @@ export function SpendingCard({
             <div
               key={cat.label}
               className="flex items-center gap-[10px] rounded-[10px] p-2"
-              style={{ background: idx === 0 ? '#F0FDF4' : 'transparent' }}
+              style={{ background: idx === 0 ? 'var(--color-success-soft)' : 'transparent' }}
             >
               <div
                 className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-[9px]"
@@ -202,7 +209,7 @@ export function SpendingCard({
                 {cat.label}
               </span>
               <span className="shrink-0 text-xs font-semibold text-faint">%{cat.pct}</span>
-              <span className="w-[70px] shrink-0 text-right text-[13px] font-bold text-ink">
+              <span className="shrink-0 whitespace-nowrap text-right text-[13px] font-bold text-ink">
                 {formatTL(cat.kurus)}
               </span>
             </div>

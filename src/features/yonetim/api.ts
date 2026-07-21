@@ -1,10 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
-import { nextOccurrenceAfterISO } from '../../lib/dates'
+import { istanbulTodayISO, nextOccurrenceAfterISO } from '../../lib/dates'
 import { kurusToNumericString } from '../../lib/money'
 import type { Profile, Role } from '../../lib/types'
 import type { IslemTur } from '../finans/types'
-import type { CariIsletme, Istek, IstekTur, Member, PersonelOdeme } from './types'
+import type { CariIsletme, Istek, IstekTur, Izin, Member, PersonelOdeme, PrimPaket } from './types'
 
 async function currentUserId(): Promise<string> {
   const { data } = await supabase.auth.getSession()
@@ -57,6 +57,65 @@ export function useDeactivatePaket() {
   })
 }
 
+// ═══ Prim paketleri (050) ═══════════════════════════════════
+
+export function usePrimPaketleri(businessId: string) {
+  return useQuery({
+    queryKey: ['prim-paketleri', businessId],
+    queryFn: async (): Promise<PrimPaket[]> => {
+      const { data, error } = await supabase
+        .from('prim_paketleri')
+        .select('id, business_id, name, tutar')
+        .eq('business_id', businessId)
+        .order('created_at', { ascending: true })
+      if (error) throw error
+      return data as PrimPaket[]
+    },
+    enabled: businessId !== '',
+  })
+}
+
+export function useAddPrimPaket() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (input: { businessId: string; name: string; tutarKurus: number }) => {
+      const { error } = await supabase.from('prim_paketleri').insert({
+        business_id: input.businessId,
+        name: input.name,
+        tutar: kurusToNumericString(input.tutarKurus),
+      })
+      if (error) throw error
+    },
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['prim-paketleri'] }),
+  })
+}
+
+export function useUpdatePrimPaket() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (input: { id: string; name: string; tutarKurus: number }) => {
+      const { error } = await supabase
+        .from('prim_paketleri')
+        .update({ name: input.name, tutar: kurusToNumericString(input.tutarKurus) })
+        .eq('id', input.id)
+      if (error) throw error
+    },
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['prim-paketleri'] }),
+  })
+}
+
+/** Hard delete — hiçbir işlem paketi referanslamaz (tutar/ad işleme kopyalanır). */
+export function useDeletePrimPaket() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id }: { id: string }) => {
+      const { error } = await supabase.from('prim_paketleri').delete().eq('id', id)
+      if (error) throw error
+    },
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['prim-paketleri'] }),
+  })
+}
+
 // ═══ Personel ═══════════════════════════════════════════════
 
 const MEMBER_SELECT = 'profile_id, business_id, maas, odeme_gunu, profile:profiles(id, full_name, role, status)'
@@ -70,8 +129,13 @@ export function useMembers(businessId: string) {
         .select(MEMBER_SELECT)
         .eq('business_id', businessId)
       if (error) throw error
-      return (data as unknown as Member[]).sort((a, b) =>
-        a.profile.full_name.localeCompare(b.profile.full_name, 'tr-TR'),
+      // Rol önceliğiyle sırala: Yönetici > Muhasebe > Personel, rol içinde ada göre
+      const oncelik = (r: Member['profile']['role']) =>
+        r === 'YONETICI' ? 0 : r === 'MUHASEBE' ? 1 : r === 'PERSONEL' ? 2 : 3
+      return (data as unknown as Member[]).sort(
+        (a, b) =>
+          oncelik(a.profile.role) - oncelik(b.profile.role) ||
+          a.profile.full_name.localeCompare(b.profile.full_name, 'tr-TR'),
       )
     },
     enabled: businessId !== '',
@@ -134,7 +198,8 @@ export function usePersonelOdemeler(profileId: string, businessId: string) {
     queryFn: async (): Promise<PersonelOdeme[]> => {
       const { data, error } = await supabase
         .from('personel_odemeler')
-        .select('*')
+        // 045: avans/prim Onay'dan geçtiği için durum bağlı işlemden okunur
+        .select('*, islem:islemler(durum)')
         .eq('profile_id', profileId)
         .eq('business_id', businessId)
         .order('tarih', { ascending: false })
@@ -655,5 +720,85 @@ export function useDeactivateKategori() {
       if (error) throw error
     },
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['kategoriler'] }),
+  })
+}
+
+// ═══ İzinler (048) ══════════════════════════════════════════
+
+/** One person's leave records, newest range first. */
+export function useIzinler(businessId: string, profileId: string) {
+  return useQuery({
+    queryKey: ['izinler', businessId, profileId],
+    queryFn: async (): Promise<Izin[]> => {
+      const { data, error } = await supabase
+        .from('izinler')
+        .select('id, business_id, profile_id, baslangic, bitis, created_at')
+        .eq('business_id', businessId)
+        .eq('profile_id', profileId)
+        .order('baslangic', { ascending: false })
+      if (error) throw error
+      return data as Izin[]
+    },
+    enabled: businessId !== '' && profileId !== '',
+  })
+}
+
+/** Who is on leave today (Istanbul) — profile ids, for the İzinde badges. */
+export function useAktifIzinProfilleri(businessId: string) {
+  return useQuery({
+    queryKey: ['izin-aktif', businessId],
+    queryFn: async (): Promise<Set<string>> => {
+      const today = istanbulTodayISO()
+      const { data, error } = await supabase
+        .from('izinler')
+        .select('profile_id')
+        .eq('business_id', businessId)
+        .lte('baslangic', today)
+        .gte('bitis', today)
+      if (error) throw error
+      return new Set((data as { profile_id: string }[]).map((r) => r.profile_id))
+    },
+    enabled: businessId !== '',
+  })
+}
+
+function useInvalidateIzinler() {
+  const queryClient = useQueryClient()
+  return () => {
+    void queryClient.invalidateQueries({ queryKey: ['izinler'] })
+    void queryClient.invalidateQueries({ queryKey: ['izin-aktif'] })
+  }
+}
+
+/** RLS kademeli: Muhasebe yalnızca PERSONEL hedefe, Yönetici herkese (048). */
+export function useAddIzin() {
+  const invalidate = useInvalidateIzinler()
+  return useMutation({
+    mutationFn: async (input: {
+      businessId: string
+      profileId: string
+      baslangic: string
+      bitis: string
+    }) => {
+      const { error } = await supabase.from('izinler').insert({
+        business_id: input.businessId,
+        profile_id: input.profileId,
+        baslangic: input.baslangic,
+        bitis: input.bitis,
+      })
+      if (error) throw error
+    },
+    onSuccess: () => invalidate(),
+  })
+}
+
+export function useDeleteIzin() {
+  const invalidate = useInvalidateIzinler()
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from('izinler').delete().eq('id', id)
+      if (error) throw error
+    },
+    onSuccess: () => invalidate(),
   })
 }

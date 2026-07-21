@@ -14,6 +14,14 @@ export interface Member {
   }
 }
 
+/** Prim paketi (050): ad + tutar şablonu; Prim Ver ekranındaki seçicide kullanılır. */
+export interface PrimPaket {
+  id: string
+  business_id: string
+  name: string
+  tutar: number | string
+}
+
 export interface PersonelOdeme {
   id: string
   profile_id: string
@@ -23,6 +31,29 @@ export interface PersonelOdeme {
   note: string
   tarih: string
   created_at: string
+  /** 045: avans/prim Onay'dan geçer — gerçek durum bağlı işlemden okunur.
+   *  MAAŞ born-ONAYLANDI olduğu için orada hep 'ONAYLANDI' gelir.
+   *  null = bağlı işlem yok: eski/kasa-dışı avans (045 öncesi kayıtlar ya da
+   *  işlemi kaldırılmış satır) — GERÇEK, verilmiş bir avanstır. */
+  islem: { durum: 'BEKLIYOR' | 'ONAYLANDI' | 'REDDEDILDI' } | null
+}
+
+/**
+ * "Verilmiş" sayılır mı? (rozet ve toplamlar için)
+ *
+ * YALNIZCA gerçekten ONAY BEKLEYEN — yani bağlı işlemi hâlâ `BEKLIYOR` olan
+ * (045 sonrası, henüz onaylanmamış) avans/prim — hariç tutulur. Diğer her şey
+ * verilmiştir:
+ *   • `islem === null` → eski/kasa-dışı avans (işlem linki yok). Deploy'daki
+ *     eski kod bunları personel defterinden toplayıp "verilmiş" gösteriyordu;
+ *     biz de öyle sayarız — aksi hâlde gerçek avanslar "Onay bekliyor" diye
+ *     yanlış işaretlenip toplamdan düşerdi (saha hatası, 2026-07-21).
+ *   • `ONAYLANDI` → onaylı, kasada.
+ * `REDDEDILDI` reddedilmiş demektir (045 sonrası bu satır zaten silinir);
+ * verilmiş sayılmaz.
+ */
+export function odemeOnayli(o: PersonelOdeme): boolean {
+  return o.islem === null || o.islem.durum === 'ONAYLANDI'
 }
 
 export interface CariHareket {
@@ -66,6 +97,16 @@ export interface Istek {
   karar_tarihi: string | null
   /** NULL = deleted account. */
   profile: { full_name: string; role: Role | null } | null
+}
+
+/** Yıllık izin aralığı (048). Tarihler date (YYYY-MM-DD), uçlar dâhil. */
+export interface Izin {
+  id: string
+  business_id: string
+  profile_id: string
+  baslangic: string
+  bitis: string
+  created_at: string
 }
 
 export const ROLE_LABELS: Record<Role, string> = {

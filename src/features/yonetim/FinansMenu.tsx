@@ -1,5 +1,7 @@
+import type { ReactNode } from 'react'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { useNavigate } from 'react-router'
+import { useAuth } from '../../app/providers/AuthProvider'
 import { ChevronDownIcon } from '../kayit/icons'
 import {
   BuildingIcon,
@@ -18,7 +20,17 @@ function ClockIcon() {
   )
 }
 
-const ITEMS = [
+interface MenuItem {
+  path: string
+  title: string
+  subtitle: string
+  iconBg: string
+  icon: ReactNode
+  /** true = yalnızca Yönetici görür (047) */
+  yoneticiOnly?: boolean
+}
+
+const ITEMS: MenuItem[] = [
   {
     path: '/yonetim/paketler',
     title: 'Paketler',
@@ -60,12 +72,17 @@ const ITEMS = [
     subtitle: 'İsim ve kategoriler',
     iconBg: '#F2F2F2',
     icon: <GearSmIcon />,
+    // 047: yazma politikaları da yalnızca Yönetici — menüde gizlemek
+    // kozmetik, asıl sınır RLS'te
+    yoneticiOnly: true,
   },
 ]
 
 /** The "Yönetim" pill on the Finans header — opens the module menu. */
 export default function FinansMenu() {
   const navigate = useNavigate()
+  const { profile } = useAuth()
+  const items = ITEMS.filter((i) => !i.yoneticiOnly || profile?.role === 'YONETICI')
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
@@ -85,7 +102,7 @@ export default function FinansMenu() {
           sideOffset={8}
           className="menu-in z-50 min-w-[250px] rounded-[18px] bg-white p-2 shadow-[0_12px_32px_rgba(0,0,0,0.18)]"
         >
-          {ITEMS.map((item) => (
+          {items.map((item) => (
             <DropdownMenu.Item
               key={item.path}
               onSelect={() => void navigate(item.path)}

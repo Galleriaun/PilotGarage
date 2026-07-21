@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { formatDateDots } from '../../lib/dates'
-import { kurusToInput, numericStringToKurus } from '../../lib/money'
+import { formatTL, kurusToInput, numericStringToKurus } from '../../lib/money'
 import { canSeeFinance } from '../../lib/rbac'
 import type { OdemeYontemi } from '../../lib/types'
 import ConfirmDialog from '../../components/ui/ConfirmDialog'
@@ -19,7 +19,9 @@ import {
 } from './api'
 import { PaketDropdown, SaatDropdown, paketFullLabel, saatLabel } from './components'
 import { DURUM_META, DURUM_MENU_META, DURUM_ORDER } from './durum'
-import { buildFinansAlanlari, YONTEM_LABELS } from './finans'
+import { buildFinansAlanlari, gelirBaseKurus, YONTEM_LABELS } from './finans'
+import KomisyonBankaSecici from '../../components/ui/KomisyonBankaSecici'
+import { digitsOnly, KAYIT_MAX, KM_DIGITS, YIL_DIGITS, YIL_MAX, YIL_MIN } from './limits'
 import { formatTelDisplay, isTelComplete, normalizeTel, telHref } from './telefon'
 import {
   ArrowLeftSmall,
@@ -32,9 +34,18 @@ import {
 } from './icons'
 import type { KayitDurum, KayitFields, KayitFinansAlanlari } from './types'
 
-function InfoCard({ label, children }: { label: string; children: React.ReactNode }) {
+function InfoCard({
+  label,
+  className = '',
+  children,
+}: {
+  label: string
+  /** ek sınıf (ör. basis-full → sarmalı satırda tam genişlik kaplasın) */
+  className?: string
+  children: React.ReactNode
+}) {
   return (
-    <div className="flex-1 rounded-[14px] bg-card px-4 py-[14px]">
+    <div className={`flex-1 rounded-[14px] bg-card px-4 py-[14px] ${className}`}>
       <div className="mb-1 text-[11px] font-bold tracking-[0.5px] text-faint">{label}</div>
       {children}
     </div>
@@ -43,6 +54,11 @@ function InfoCard({ label, children }: { label: string; children: React.ReactNod
 
 const bareInputCls =
   'w-full border-none bg-transparent p-0 text-[15px] font-semibold text-ink outline-none'
+
+/** Komisyon oranı, tr-TR yazımıyla: %2,99 (yüzde işareti önde). */
+function formatYuzde(v: number): string {
+  return `%${v.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
 
 export default function KayitDetay() {
   const { id = '' } = useParams()
@@ -114,6 +130,22 @@ export default function KayitDetay() {
   const hasActiveGelir = kayit.gelirler.some((g) => g.durum !== 'REDDEDILDI')
   const canEditFinans = isFinance && !hasActiveGelir
 
+  // Komisyon oranı: saklanan komisyon TL'sinin geliri doğuran tutara oranı.
+  // Tutar girilmediyse gelir paket fiyatından doğar (kayit_tamamlandi_islem,
+  // 034) — oran da onun üzerinden hesaplanır. Hesaplanamıyorsa (tutar da paket
+  // de yoksa) yüzde yerine TL tutarı gösterilir.
+  const komisyonKurus = kayit.komisyon != null ? numericStringToKurus(kayit.komisyon) : null
+  const gelirKurus =
+    kayit.tutar != null
+      ? numericStringToKurus(kayit.tutar)
+      : kayit.paket != null
+        ? numericStringToKurus(kayit.paket.price)
+        : null
+  const komisyonOran =
+    komisyonKurus !== null && gelirKurus !== null && gelirKurus > 0
+      ? (komisyonKurus / gelirKurus) * 100
+      : null
+
   function startEdit() {
     if (!kayit) return
     setError('')
@@ -146,8 +178,8 @@ export default function KayitDetay() {
       setError('Plaka boş olamaz.')
       return
     }
-    if (draft.yil !== null && (draft.yil < 1900 || draft.yil > 2100)) {
-      setError('Geçerli bir yıl girin (1900–2100).')
+    if (draft.yil !== null && (draft.yil < YIL_MIN || draft.yil > YIL_MAX)) {
+      setError(`Geçerli bir yıl girin (${YIL_MIN}–${YIL_MAX}).`)
       return
     }
     if (draft.km !== null && draft.km < 0) {
@@ -366,6 +398,7 @@ export default function KayitDetay() {
                 type="text"
                 value={draft.plaka}
                 onChange={(e) => setDraft({ ...draft, plaka: e.target.value })}
+                maxLength={KAYIT_MAX.plaka}
                 className="w-full border-none bg-transparent p-0 text-xl font-bold tracking-[1px] text-ink outline-none"
               />
             </div>
@@ -417,6 +450,7 @@ export default function KayitDetay() {
                 type="text"
                 value={draft.musteri_adi}
                 onChange={(e) => setDraft({ ...draft, musteri_adi: e.target.value })}
+                maxLength={KAYIT_MAX.musteriAdi}
                 className="w-full border-none bg-transparent p-0 text-base font-bold text-ink outline-none"
               />
             </div>
@@ -471,6 +505,7 @@ export default function KayitDetay() {
                 type="text"
                 value={draft.marka}
                 onChange={(e) => setDraft({ ...draft, marka: e.target.value })}
+                maxLength={KAYIT_MAX.marka}
                 className={bareInputCls}
               />
             ) : (
@@ -483,6 +518,7 @@ export default function KayitDetay() {
                 type="text"
                 value={draft.model}
                 onChange={(e) => setDraft({ ...draft, model: e.target.value })}
+                maxLength={KAYIT_MAX.model}
                 className={bareInputCls}
               />
             ) : (
@@ -493,14 +529,17 @@ export default function KayitDetay() {
 
         <div className="mb-3 flex gap-[10px]">
           <InfoCard label="YIL">
+            {/* type="text" + digitsOnly: number alanı maxLength'i yok sayıyor */}
             {editing && draft ? (
               <input
-                type="number"
+                type="text"
                 inputMode="numeric"
                 value={draft.yil ?? ''}
-                onChange={(e) =>
-                  setDraft({ ...draft, yil: e.target.value ? Number(e.target.value) : null })
-                }
+                onChange={(e) => {
+                  const v = digitsOnly(e.target.value, YIL_DIGITS)
+                  setDraft({ ...draft, yil: v ? Number(v) : null })
+                }}
+                maxLength={YIL_DIGITS}
                 className={bareInputCls}
               />
             ) : (
@@ -510,12 +549,14 @@ export default function KayitDetay() {
           <InfoCard label="KM">
             {editing && draft ? (
               <input
-                type="number"
+                type="text"
                 inputMode="numeric"
                 value={draft.km ?? ''}
-                onChange={(e) =>
-                  setDraft({ ...draft, km: e.target.value ? Number(e.target.value) : null })
-                }
+                onChange={(e) => {
+                  const v = digitsOnly(e.target.value, KM_DIGITS)
+                  setDraft({ ...draft, km: v ? Number(v) : null })
+                }}
+                maxLength={KM_DIGITS}
                 className={bareInputCls}
               />
             ) : (
@@ -533,6 +574,7 @@ export default function KayitDetay() {
                 type="text"
                 value={draft.ruhsat_no}
                 onChange={(e) => setDraft({ ...draft, ruhsat_no: e.target.value })}
+                maxLength={KAYIT_MAX.ruhsatNo}
                 className={bareInputCls}
               />
             ) : (
@@ -564,6 +606,45 @@ export default function KayitDetay() {
             </div>
           )}
         </div>
+
+        {/* Görüntüleme: elle girilen tutar + ödeme yöntemi (034) — paketin hemen
+            altında, gelir doğduktan sonra da görünür. Finans-only: ödeme bilgisi
+            personelin işi değil (paket fiyatı zaten paket satırında görünüyor). */}
+        {!editing &&
+          isFinance &&
+          (kayit.tutar != null || kayit.odeme_yontemi != null || komisyonKurus !== null) && (
+            // flex-wrap + basis-full: MOBİLDE komisyon varsa yöntem kartı kendi
+            // satırına iner (yarım genişlikte yöntem + komisyon sığmıyor);
+            // md: üstünde yer bol, md:basis-0 ile TUTAR'la yan yana döner
+            <div className="mb-3 flex flex-wrap gap-[10px]">
+              <InfoCard label="TUTAR">
+                <div className="text-[15px] font-semibold text-ink">
+                  {kayit.tutar != null ? formatTL(numericStringToKurus(kayit.tutar)) : '—'}
+                </div>
+              </InfoCard>
+              <InfoCard
+                label="ÖDEME YÖNTEMİ"
+                className={komisyonKurus !== null ? 'basis-full md:basis-0' : ''}
+              >
+                {/* metin uzarsa taşmak yerine alt satıra sarsın */}
+                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-[2px]">
+                  <span className="text-[15px] font-semibold text-ink">
+                    {kayit.odeme_yontemi ? YONTEM_LABELS[kayit.odeme_yontemi] : '—'}
+                  </span>
+                  {komisyonKurus !== null && (
+                    <span className="text-[12.5px] font-medium text-muted">
+                      {/* Oran + TL her iki boyutta da görünür; yalnızca
+                          "Komisyon:" öneki mobilde gizli (satır kısalsın). */}
+                      <span className="hidden md:inline">Komisyon: </span>
+                      {komisyonOran !== null
+                        ? `${formatYuzde(komisyonOran)} · ${formatTL(komisyonKurus)}`
+                        : formatTL(komisyonKurus)}
+                    </span>
+                  )}
+                </div>
+              </InfoCard>
+            </div>
+          )}
 
         {/* Finans (034): tutar / ödeme yöntemi / komisyon — düzenlenebilir yalnızca
             gelir henüz doğmadıysa (finans + aktif işlem yok) */}
@@ -614,6 +695,14 @@ export default function KayitDetay() {
                 <div className="mb-1 text-[11px] font-bold tracking-[0.5px] text-faint">
                   KOMİSYON (₺)
                 </div>
+                <KomisyonBankaSecici
+                  baseKurus={gelirBaseKurus(
+                    finansTutar,
+                    paketler.find((p) => p.id === draft.paket_id)?.price ?? null,
+                  )}
+                  komisyon={finansKomisyon}
+                  onKomisyon={setFinansKomisyon}
+                />
                 <input
                   type="text"
                   inputMode="decimal"
@@ -688,6 +777,7 @@ export default function KayitDetay() {
             <textarea
               value={draft.notlar}
               onChange={(e) => setDraft({ ...draft, notlar: e.target.value })}
+              maxLength={KAYIT_MAX.notlar}
               className="min-h-20 w-full resize-none border-none bg-transparent p-0 text-[15px] text-ink outline-none"
             />
           ) : (

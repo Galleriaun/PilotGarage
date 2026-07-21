@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
+import KomisyonBankaSecici from '../../components/ui/KomisyonBankaSecici'
 import { parseTLToKurus } from '../../lib/money'
 import type { OdemeYontemi } from '../../lib/types'
 import { ChevronDownIcon } from '../kayit/icons'
@@ -222,6 +223,11 @@ export default function AddTxModal({ open, tur, businessId, onClose }: AddTxModa
               {odemeYontemi === 'KREDI_KARTI' && (
                 <div>
                   <div className={fieldLabelCls}>KOMİSYON (₺) — İSTEĞE BAĞLI</div>
+                  <KomisyonBankaSecici
+                    baseKurus={parseTLToKurus(amount)}
+                    komisyon={komisyon}
+                    onKomisyon={setKomisyon}
+                  />
                   <input
                     type="text"
                     inputMode="decimal"

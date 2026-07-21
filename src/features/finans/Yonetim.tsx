@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router'
+import { useAuth } from '../../app/providers/AuthProvider'
 import { useBusiness } from '../../app/providers/BusinessProvider'
 import { istanbulTodayISO, monthRangeISO } from '../../lib/dates'
 import { formatTL } from '../../lib/money'
@@ -8,6 +9,7 @@ import { GearIcon, SwapIcon } from '../kayit/icons'
 import { BellButton, TrashHeaderButton } from '../settings/HeaderButtons'
 import FinansMenu from '../yonetim/FinansMenu'
 import AddTxModal from './AddTxModal'
+import TransferModal from './TransferModal'
 import TxCard from './TxCard'
 import {
   useApprovedIslemler,
@@ -18,11 +20,13 @@ import {
   useTekrarKurallari,
 } from './api'
 import {
+  isTransferEs,
   PERIOD_LABELS,
   PERIOD_SUBTITLES,
   periodRange,
   prevPeriodRange,
   sumKurus,
+  type DateRange,
   type PeriodKey,
 } from './selectors'
 import type { IslemTur } from './types'
@@ -97,6 +101,10 @@ export default function Yonetim() {
   const { activeBusiness, businesses } = useBusiness()
   const businessId = activeBusiness?.id ?? ''
 
+  const { profile } = useAuth()
+  // Onay (044): yalnızca Yönetici — FAB'ı Muhasebe'ye hiç gösterme
+  const isYonetici = profile?.role === 'YONETICI'
+
   const { data: islemler = [], isPending, isError } = useApprovedIslemler(businessId)
   const { data: pending = [] } = usePendingIslemler(businessId)
   const { data: silmeTalepleri = [] } = useKayitSilmeTalepleri(businessId)
@@ -108,6 +116,7 @@ export default function Yonetim() {
   const [period, setPeriod] = useState<PeriodKey>('TUMU')
   const [widgetIndex, setWidgetIndex] = useState(0)
   const [addTx, setAddTx] = useState<IslemTur | null>(null)
+  const [transferOpen, setTransferOpen] = useState(false)
 
   const today = istanbulTodayISO()
   const currentYear = Number(today.slice(0, 4))
@@ -127,14 +136,21 @@ export default function Yonetim() {
   const delta = prevNet !== null ? bakiye - prevNet : null
 
   // Nakit / Kredi Kartı split of the same period (net; yöntemsiz işlemler
-  // — cari, maaş/avans — are outside both buckets by design)
-  function yontemNet(y: 'NAKIT' | 'KREDI_KARTI' | 'HAVALE') {
+  // — cari, maaş/avans — are outside both buckets by design).
+  // transferDahil: aktarım ciroya girmez ama kovalar arasında para GERÇEKTEN
+  // taşınır — bu satırlar kova matematiğine dâhil edilmeli (041)
+  function yontemNet(y: 'NAKIT' | 'KREDI_KARTI' | 'HAVALE', r: DateRange | null = range) {
     const rows = islemler.filter((i) => i.odeme_yontemi === y)
-    return sumKurus(rows, 'GELIR', range) - sumKurus(rows, 'GIDER', range)
+    const opts = { transferDahil: true }
+    return sumKurus(rows, 'GELIR', r, opts) - sumKurus(rows, 'GIDER', r, opts)
   }
   const nakitNet = yontemNet('NAKIT')
   const kkNet = yontemNet('KREDI_KARTI')
   const havaleNet = yontemNet('HAVALE')
+  // Aktarım ekranı hesabın GERÇEK bakiyesini göstermeli: dönem filtresi
+  // "Bugün" iken bile tüm zamanların kova bakiyesi kullanılır (041)
+  const nakitTumu = yontemNet('NAKIT', null)
+  const kkTumu = yontemNet('KREDI_KARTI', null)
 
   const bakiyeLabel = formatTL(bakiye)
   const deltaLabel = delta !== null ? `${delta >= 0 ? '+' : '-'}${formatTL(Math.abs(delta))}` : ''
@@ -223,28 +239,47 @@ export default function Yonetim() {
             >
               {bakiyeLabel}
             </div>
-            <div className="mt-1 text-xs font-medium text-white/40">
-              {PERIOD_SUBTITLES[period]}
+            <div className="mt-1 flex items-center justify-between gap-3">
+              <span className="text-xs font-medium text-white/40">
+                {PERIOD_SUBTITLES[period]}
+              </span>
+              {/* Hesaba Para Aktarımı (041): Nakit → Kredi Kartı */}
+              <button
+                type="button"
+                onClick={() => setTransferOpen(true)}
+                aria-label="Hesaba para aktar"
+                className="pressable flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-[12px] bg-white/10"
+              >
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="22" y1="2" x2="11" y2="13" />
+                  <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                </svg>
+              </button>
             </div>
-            <div className="mt-3 flex items-center gap-5 border-t border-white/10 pt-3">
-              <div className="flex min-w-0 items-center gap-[6px]">
+            {/* Yöntem kovaları: mobilde sarmalar (tam sayılar görünsün diye) —
+                Nakit + Kredi K. bir satır, Havale alta; masaüstünde tek satır */}
+            <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-white/10 pt-3">
+              <div className="flex shrink-0 items-center gap-[6px]">
                 <span className="h-[6px] w-[6px] shrink-0 rounded-full bg-[#4ADE80]" />
                 <span className="text-[11px] font-semibold text-white/50">Nakit</span>
-                <span className="truncate text-xs font-bold text-white">
+                <span className="whitespace-nowrap text-xs font-bold text-white">
                   {formatTL(nakitNet)}
                 </span>
               </div>
-              <div className="flex min-w-0 items-center gap-[6px]">
+              <div className="flex shrink-0 items-center gap-[6px]">
                 <span className="h-[6px] w-[6px] shrink-0 rounded-full bg-[#60A5FA]" />
                 <span className="whitespace-nowrap text-[11px] font-semibold text-white/50">
-                  Kredi Kartı
+                  <span className="md:hidden">Kredi K.</span>
+                  <span className="hidden md:inline">Kredi Kartı</span>
                 </span>
-                <span className="truncate text-xs font-bold text-white">{formatTL(kkNet)}</span>
+                <span className="whitespace-nowrap text-xs font-bold text-white">
+                  {formatTL(kkNet)}
+                </span>
               </div>
-              <div className="flex min-w-0 items-center gap-[6px]">
+              <div className="flex shrink-0 items-center gap-[6px]">
                 <span className="h-[6px] w-[6px] shrink-0 rounded-full bg-[#C4B5FD]" />
                 <span className="text-[11px] font-semibold text-white/50">Havale</span>
-                <span className="truncate text-xs font-bold text-white">
+                <span className="whitespace-nowrap text-xs font-bold text-white">
                   {formatTL(havaleNet)}
                 </span>
               </div>
@@ -347,7 +382,11 @@ export default function Yonetim() {
                 Henüz onaylanmış işlem yok.
               </p>
             ) : (
-              islemler.slice(0, 4).map((i) => <TxCard key={i.id} islem={i} variant="white" />)
+              // transferin eş bacağı gizli — aktarım tek satır görünür (041)
+              islemler
+                .filter((i) => !isTransferEs(i))
+                .slice(0, 4)
+                .map((i) => <TxCard key={i.id} islem={i} variant="white" />)
             )}
           </div>
 
@@ -412,29 +451,40 @@ export default function Yonetim() {
           Offset mirrors the nav's height (12px pt + ~41px content +
           max(20px, safe-area) pb) plus a 12px gap — the old 72px+env()
           landed ON the nav in Safari, where the inset is 0. */}
-      {createPortal(
-        <div className="pointer-events-none fixed inset-x-0 bottom-[calc(65px+max(20px,env(safe-area-inset-bottom)))] z-40 mx-auto flex w-full max-w-[480px] justify-center md:bottom-8">
-          <button
-            type="button"
-            onClick={() => void navigate('/yonetim/onay')}
-            className="pressable pointer-events-auto flex cursor-pointer items-center gap-2 whitespace-nowrap rounded-[10px] bg-[#1F2937] py-2 px-[18px] text-[17px] font-bold text-white shadow-[0_8px_20px_rgba(31,41,55,0.28)]"
-          >
-            <span>Onay</span>
-            {onayCount > 0 && (
-              <span className="-mr-[6px] inline-flex h-[22px] min-w-[22px] items-center justify-center rounded-[7px] bg-white/[.18] px-[6px] text-sm font-bold">
-                {onayCount}
-              </span>
-            )}
-          </button>
-        </div>,
-        document.body,
-      )}
+      {isYonetici &&
+        createPortal(
+          <div className="pointer-events-none fixed inset-x-0 bottom-[calc(65px+max(20px,env(safe-area-inset-bottom)))] z-40 mx-auto flex w-full max-w-[480px] justify-center md:bottom-8">
+            <button
+              type="button"
+              onClick={() => void navigate('/yonetim/onay')}
+              className="pressable pointer-events-auto flex cursor-pointer items-center gap-2 whitespace-nowrap rounded-[10px] bg-[#1F2937] py-2 px-[18px] text-[17px] font-bold text-white shadow-[0_8px_20px_rgba(31,41,55,0.28)]"
+            >
+              <span>Onay</span>
+              {onayCount > 0 && (
+                <span className="-mr-[6px] inline-flex h-[22px] min-w-[22px] items-center justify-center rounded-[7px] bg-white/[.18] px-[6px] text-sm font-bold">
+                  {onayCount}
+                </span>
+              )}
+            </button>
+          </div>,
+          document.body,
+        )}
 
       <AddTxModal
         open={addTx !== null}
         tur={addTx ?? 'GELIR'}
         businessId={businessId}
         onClose={() => setAddTx(null)}
+      />
+
+      {/* Bakiyeler dönem filtresinden BAĞIMSIZ olmalı: aktarım tüm zamanların
+          kova bakiyesini taşır, "Bugün" penceresini değil (041) */}
+      <TransferModal
+        open={transferOpen}
+        businessId={businessId}
+        nakitKurus={nakitTumu}
+        kkKurus={kkTumu}
+        onClose={() => setTransferOpen(false)}
       />
     </div>
   )

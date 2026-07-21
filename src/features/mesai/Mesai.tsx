@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { useBusiness } from '../../app/providers/BusinessProvider'
 import { formatCreatedStamp } from '../../lib/dates'
+import { rpcErrorText } from '../../lib/errors'
 import { BackChevron } from '../auth/EyeIcon'
 import {
   checkMesaiIp,
@@ -104,17 +105,6 @@ function getPosition(onProgress?: (accuracy: number) => void): Promise<Geolocati
       { enableHighAccuracy: true, timeout: WAIT_MS, maximumAge: 0 },
     )
   })
-}
-
-/**
- * Supabase RPC errors are PostgrestError objects, NOT Error instances — so
- * `err instanceof Error` misses them and the server's raised Turkish message
- * (e.g. "Konumunuz limitin dışında (300 m). İşletmeye yaklaşın.") gets lost.
- * Read `.message` off whatever shape we got.
- */
-function rpcErrorText(err: unknown, fallback: string): string {
-  const m = (err as { message?: unknown } | null)?.message
-  return typeof m === 'string' && m.trim() !== '' ? m : fallback
 }
 
 function geoErrorText(err: unknown): string {

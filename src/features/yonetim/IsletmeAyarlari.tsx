@@ -1,15 +1,171 @@
 import { useState } from 'react'
 import { useBusiness } from '../../app/providers/BusinessProvider'
 import ConfirmDialog from '../../components/ui/ConfirmDialog'
+import { formatTL, kurusToInput, numericStringToKurus, parseTLToKurus } from '../../lib/money'
 import { useKategoriler } from '../finans/api'
 import type { IslemTur, Kategori } from '../finans/types'
 import {
   useAddKategori,
+  useAddPrimPaket,
   useDeactivateKategori,
+  useDeletePrimPaket,
+  usePrimPaketleri,
   useUpdateBusinessName,
+  useUpdatePrimPaket,
 } from './api'
-import { GearSmIcon, ScreenHeader } from './shared'
+import type { PrimPaket } from './types'
+import { FormModal, GearSmIcon, modalFieldLabel, modalInputCls, PencilIcon, ScreenHeader } from './shared'
 import MesaiKonumSection from '../mesai/MesaiKonumSection'
+
+function TrashSmall({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      className="flex h-[26px] w-[26px] shrink-0 cursor-pointer items-center justify-center rounded-[8px] bg-danger-soft"
+    >
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#C62828" strokeWidth="2.4" strokeLinecap="round">
+        <line x1="18" y1="6" x2="6" y2="18" />
+        <line x1="6" y1="6" x2="18" y2="18" />
+      </svg>
+    </button>
+  )
+}
+
+/** Prim paketleri (050): ad + tutar; Prim Ver seçicisini besler. Yönetici-only. */
+function PrimPaketSection({ businessId }: { businessId: string }) {
+  const { data: paketler = [] } = usePrimPaketleri(businessId)
+  const addPaket = useAddPrimPaket()
+  const updatePaket = useUpdatePrimPaket()
+  const deletePaket = useDeletePrimPaket()
+
+  const empty = { open: false, id: null as string | null, name: '', tutar: '' }
+  const [modal, setModal] = useState(empty)
+  const [deleting, setDeleting] = useState<PrimPaket | null>(null)
+  const [error, setError] = useState('')
+
+  function openAdd() {
+    setError('')
+    setModal({ open: true, id: null, name: '', tutar: '' })
+  }
+  function openEdit(p: PrimPaket) {
+    setError('')
+    setModal({ open: true, id: p.id, name: p.name, tutar: kurusToInput(numericStringToKurus(String(p.tutar))) })
+  }
+
+  async function onSave() {
+    setError('')
+    const name = modal.name.trim()
+    if (!name) {
+      setError('Paket adı girin.')
+      return
+    }
+    const kurus = parseTLToKurus(modal.tutar)
+    if (kurus === null || kurus <= 0) {
+      setError('Geçerli bir tutar girin.')
+      return
+    }
+    try {
+      if (modal.id) await updatePaket.mutateAsync({ id: modal.id, name, tutarKurus: kurus })
+      else await addPaket.mutateAsync({ businessId, name, tutarKurus: kurus })
+      setModal(empty)
+    } catch {
+      setError('Kaydedilemedi. Tekrar deneyin.')
+    }
+  }
+
+  async function onDelete() {
+    if (!deleting) return
+    try {
+      await deletePaket.mutateAsync({ id: deleting.id })
+    } finally {
+      setDeleting(null)
+    }
+  }
+
+  return (
+    <div>
+      <div className="mb-2 text-[11px] font-bold tracking-[0.6px] text-[#666]">PRİM PAKETLERİ</div>
+      <div className="mb-2 flex flex-col gap-[6px]">
+        {paketler.map((p) => (
+          <div
+            key={p.id}
+            className="flex items-center gap-2 rounded-[12px] bg-card px-3 py-[11px]"
+          >
+            <span className="min-w-0 flex-1 truncate text-sm font-semibold text-ink">{p.name}</span>
+            <span className="shrink-0 text-sm font-bold text-ink">
+              {formatTL(numericStringToKurus(String(p.tutar)))}
+            </span>
+            <button
+              type="button"
+              onClick={() => openEdit(p)}
+              aria-label={`${p.name} paketini düzenle`}
+              className="flex h-[26px] w-[26px] shrink-0 cursor-pointer items-center justify-center rounded-[8px] bg-field"
+            >
+              <PencilIcon size={13} />
+            </button>
+            <TrashSmall label={`${p.name} paketini sil`} onClick={() => setDeleting(p)} />
+          </div>
+        ))}
+        {paketler.length === 0 && (
+          <div className="rounded-[12px] bg-card px-3 py-[11px] text-[13px] text-muted">
+            Henüz prim paketi yok.
+          </div>
+        )}
+      </div>
+      <button
+        type="button"
+        onClick={openAdd}
+        className="w-full cursor-pointer rounded-[12px] bg-field py-[11px] text-[13.5px] font-semibold text-ink"
+      >
+        + Prim paketi ekle
+      </button>
+
+      <FormModal
+        open={modal.open}
+        title={modal.id ? 'Prim Paketini Düzenle' : 'Prim Paketi Ekle'}
+        error={error}
+        busy={addPaket.isPending || updatePaket.isPending}
+        onConfirm={() => void onSave()}
+        onClose={() => setModal(empty)}
+      >
+        <div>
+          <div className={modalFieldLabel}>PAKET ADI</div>
+          <input
+            type="text"
+            placeholder="Örn. Bayram Primi"
+            value={modal.name}
+            onChange={(e) => setModal((m) => ({ ...m, name: e.target.value }))}
+            className={modalInputCls}
+          />
+        </div>
+        <div>
+          <div className={modalFieldLabel}>TUTAR (₺)</div>
+          <input
+            type="text"
+            inputMode="decimal"
+            placeholder="0"
+            value={modal.tutar}
+            onChange={(e) => setModal((m) => ({ ...m, tutar: e.target.value }))}
+            className={modalInputCls}
+          />
+        </div>
+      </FormModal>
+
+      <ConfirmDialog
+        open={deleting !== null}
+        title={`"${deleting?.name ?? ''}" paketini sil?`}
+        message="Bu işlem geri alınamaz. Geçmiş prim işlemleri etkilenmez."
+        confirmLabel="Sil"
+        danger
+        busy={deletePaket.isPending}
+        onConfirm={() => void onDelete()}
+        onCancel={() => setDeleting(null)}
+      />
+    </div>
+  )
+}
 
 function KategoriSection({
   title,
@@ -170,6 +326,9 @@ export default function IsletmeAyarlari() {
             </button>
           )}
         </div>
+
+        {/* Prim paketleri (050) — İşletme Adı'nın hemen altında */}
+        <PrimPaketSection businessId={businessId} />
 
         <KategoriSection
           title="GELİR KATEGORİLERİ"

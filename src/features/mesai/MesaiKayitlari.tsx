@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router'
 import { useBusiness } from '../../app/providers/BusinessProvider'
 import { periodRange, type PeriodKey } from '../finans/selectors'
 import { BackChevron } from '../auth/EyeIcon'
+import { useAktifIzinProfilleri } from '../yonetim/api'
 import { Avatar } from '../yonetim/shared'
 import { useMesaiAcikOturumlar, useMesaiKayitlari } from './api'
 import { buildReports, formatDuration } from './report'
@@ -26,6 +27,9 @@ export default function MesaiKayitlari() {
   const reports = useMemo(() => buildReports(kayitlar, period), [kayitlar, period])
   // Live "şu an mesaide" — latest event is a GIRIŞ, independent of the period.
   const acikSet = useMemo(() => new Set(acik.map((a) => a.profileId)), [acik])
+  // 048: bugün izinde olanlar. Fiili giriş izinden önce gelir — kişi
+  // izindeyken gerçekten geldiyse "Şu an mesaide" doğrusudur.
+  const { data: izindekiler = new Set<string>() } = useAktifIzinProfilleri(businessId)
 
   return (
     <div className="screen-forward">
@@ -84,6 +88,7 @@ export default function MesaiKayitlari() {
         <div className="flex flex-col gap-2 px-6 pt-4">
           {reports.map((r) => {
             const mesaide = acikSet.has(r.profileId)
+            const izinde = !mesaide && izindekiler.has(r.profileId)
             return (
               <button
                 key={r.profileId}
@@ -99,13 +104,25 @@ export default function MesaiKayitlari() {
                   <div className="mt-[3px] flex items-center gap-1.5 text-[11px]">
                     <span
                       className="h-[6px] w-[6px] shrink-0 rounded-full"
-                      style={{ background: mesaide ? 'var(--color-success)' : 'var(--color-faint)' }}
+                      style={{
+                        background: mesaide
+                          ? 'var(--color-success)'
+                          : izinde
+                            ? 'var(--color-warn)'
+                            : 'var(--color-faint)',
+                      }}
                     />
                     <span
                       className="font-semibold"
-                      style={{ color: mesaide ? 'var(--color-success)' : 'var(--color-muted)' }}
+                      style={{
+                        color: mesaide
+                          ? 'var(--color-success)'
+                          : izinde
+                            ? 'var(--color-warn)'
+                            : 'var(--color-muted)',
+                      }}
                     >
-                      {mesaide ? 'Şu an mesaide' : 'Mesaide değil'}
+                      {mesaide ? 'Şu an mesaide' : izinde ? 'İzinde' : 'Mesaide değil'}
                     </span>
                     <span className="text-faint">· {r.sessions.length} oturum</span>
                   </div>

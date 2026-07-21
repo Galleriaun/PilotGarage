@@ -9,7 +9,9 @@ import type { OdemeYontemi } from '../../lib/types'
 import { useCreateKayit, usePaketler } from './api'
 import { PaketDropdown, SaatDropdown } from './components'
 import { DURUM_ORDER, DURUM_META, DURUM_SEGMENT_META } from './durum'
-import { buildFinansAlanlari, YONTEM_LABELS } from './finans'
+import { buildFinansAlanlari, gelirBaseKurus, YONTEM_LABELS } from './finans'
+import KomisyonBankaSecici from '../../components/ui/KomisyonBankaSecici'
+import { digitsOnly, KAYIT_MAX, KM_DIGITS, YIL_DIGITS, YIL_MAX, YIL_MIN } from './limits'
 import { isTelComplete, normalizeTel } from './telefon'
 import { PhotoPlaceholderIcon, PlusDashedIcon, XIcon } from './icons'
 import { BackChevron } from '../auth/EyeIcon'
@@ -94,8 +96,8 @@ export default function YeniKayit() {
       return
     }
     const yilNum = yil.trim() ? Number(yil) : null
-    if (yilNum !== null && (!Number.isInteger(yilNum) || yilNum < 1900 || yilNum > 2100)) {
-      setError('Geçerli bir yıl girin (1900–2100).')
+    if (yilNum !== null && (!Number.isInteger(yilNum) || yilNum < YIL_MIN || yilNum > YIL_MAX)) {
+      setError(`Geçerli bir yıl girin (${YIL_MIN}–${YIL_MAX}).`)
       return
     }
     const kmNum = km.trim() ? Number(km) : null
@@ -179,6 +181,7 @@ export default function YeniKayit() {
                 type="text"
                 value={musteriAdi}
                 onChange={(e) => setMusteriAdi(e.target.value)}
+                maxLength={KAYIT_MAX.musteriAdi}
                 className={inputCls}
               />
             </div>
@@ -206,6 +209,7 @@ export default function YeniKayit() {
               type="text"
               value={plaka}
               onChange={(e) => setPlaka(e.target.value)}
+              maxLength={KAYIT_MAX.plaka}
               autoCapitalize="characters"
               className={`${inputCls} text-[17px] font-bold tracking-[1px]`}
             />
@@ -217,6 +221,7 @@ export default function YeniKayit() {
               type="text"
               value={ruhsatNo}
               onChange={(e) => setRuhsatNo(e.target.value)}
+              maxLength={KAYIT_MAX.ruhsatNo}
               className={inputCls}
             />
           </div>
@@ -228,6 +233,7 @@ export default function YeniKayit() {
                 type="text"
                 value={marka}
                 onChange={(e) => setMarka(e.target.value)}
+                maxLength={KAYIT_MAX.marka}
                 className={inputCls}
               />
             </div>
@@ -237,6 +243,7 @@ export default function YeniKayit() {
                 type="text"
                 value={model}
                 onChange={(e) => setModel(e.target.value)}
+                maxLength={KAYIT_MAX.model}
                 className={inputCls}
               />
             </div>
@@ -245,21 +252,24 @@ export default function YeniKayit() {
           <div className="flex gap-[10px]">
             <div className="flex-1">
               <FieldLabel>YIL</FieldLabel>
+              {/* type="text" + digitsOnly: number alanı maxLength'i yok sayıyor */}
               <input
-                type="number"
+                type="text"
                 inputMode="numeric"
                 value={yil}
-                onChange={(e) => setYil(e.target.value)}
+                onChange={(e) => setYil(digitsOnly(e.target.value, YIL_DIGITS))}
+                maxLength={YIL_DIGITS}
                 className={inputCls}
               />
             </div>
             <div className="flex-1">
               <FieldLabel>KM</FieldLabel>
               <input
-                type="number"
+                type="text"
                 inputMode="numeric"
                 value={km}
-                onChange={(e) => setKm(e.target.value)}
+                onChange={(e) => setKm(digitsOnly(e.target.value, KM_DIGITS))}
+                maxLength={KM_DIGITS}
                 className={inputCls}
               />
             </div>
@@ -323,6 +333,14 @@ export default function YeniKayit() {
               {odemeYontemi === 'KREDI_KARTI' && (
                 <div>
                   <FieldLabel>KOMİSYON (₺)</FieldLabel>
+                  <KomisyonBankaSecici
+                    baseKurus={gelirBaseKurus(
+                      tutar,
+                      paketler.find((p) => p.id === paketId)?.price ?? null,
+                    )}
+                    komisyon={komisyon}
+                    onKomisyon={setKomisyon}
+                  />
                   <input
                     type="text"
                     inputMode="decimal"
@@ -420,6 +438,7 @@ export default function YeniKayit() {
             <textarea
               value={notlar}
               onChange={(e) => setNotlar(e.target.value)}
+              maxLength={KAYIT_MAX.notlar}
               className={`${inputCls} min-h-24 resize-none`}
             />
           </div>

@@ -9,14 +9,21 @@ import { GearIcon, SwapIcon } from './icons'
 import { BellButton, TrashHeaderButton } from '../settings/HeaderButtons'
 import type { Kayit, KayitDurum } from './types'
 
-type Filter = 'ALL' | KayitDurum
+type Filter = 'ALL' | 'ONAYLANMAMIS' | KayitDurum
 
 const FILTERS: { key: Filter; label: string }[] = [
   { key: 'ALL', label: 'Tümü' },
   { key: 'AKTIF', label: 'Aktif' },
   { key: 'BEKLENEN', label: 'Beklenen' },
   { key: 'TAMAMLANDI', label: 'Tamamlandı' },
+  { key: 'ONAYLANMAMIS', label: 'Onaylanmamış' },
 ]
+
+/** Geliri henüz onaylanmamış kayıt — kart rozetiyle AYNI kural (tek kaynak,
+ *  böylece "Onaylanmadı" rozetli her kart filtrede de görünür). */
+function isOnaylanmamis(k: Kayit): boolean {
+  return !k.gelirler.some((g) => g.durum === 'ONAYLANDI')
+}
 
 function cardTitle(k: Kayit): string {
   return k.musteri_adi ? `${k.plaka} — ${k.musteri_adi}` : k.plaka
@@ -86,15 +93,18 @@ export default function YoneticiHome() {
     )
   }, [kayitlar, search])
 
-  const groups = useMemo(
-    () =>
-      DURUM_ORDER.filter((d) => filter === 'ALL' || filter === d).map((durum) => ({
-        durum,
-        meta: DURUM_META[durum],
-        items: searched.filter((k) => k.durum === durum),
-      })),
-    [searched, filter],
-  )
+  const groups = useMemo(() => {
+    // Onaylanmamış: durum grupları korunur, içlerinde yalnızca geliri
+    // onaylanmamış kayıtlar kalır
+    const list = filter === 'ONAYLANMAMIS' ? searched.filter(isOnaylanmamis) : searched
+    return DURUM_ORDER.filter(
+      (d) => filter === 'ALL' || filter === 'ONAYLANMAMIS' || filter === d,
+    ).map((durum) => ({
+      durum,
+      meta: DURUM_META[durum],
+      items: list.filter((k) => k.durum === durum),
+    }))
+  }, [searched, filter])
   const visibleGroups = groups.filter((g) => g.items.length > 0)
 
   const thumbPaths = useMemo(
@@ -177,7 +187,9 @@ export default function YoneticiHome() {
               key={f.key}
               type="button"
               onClick={() => setFilter(f.key)}
-              className="cursor-pointer whitespace-nowrap rounded-[20px] px-[14px] py-2 text-[13px] font-semibold"
+              // shrink-0: 5 çip dar ekranda sığmıyor — küçülüp kırpılmak
+              // yerine satır yatay kaysın (kapsayıcıda overflow-x-auto var)
+              className="shrink-0 cursor-pointer whitespace-nowrap rounded-[20px] px-[14px] py-2 text-[13px] font-semibold"
               style={{
                 background: selected ? 'var(--seg-on)' : 'var(--seg)',
                 color: selected ? 'var(--seg-fg-on)' : 'var(--seg-fg)',
@@ -231,13 +243,13 @@ export default function YoneticiHome() {
                     </div>
                     <div className="flex shrink-0 flex-col items-end gap-[5px]">
                       <StatusPill durum={k.durum} />
-                      {k.gelirler.some((g) => g.durum === 'ONAYLANDI') ? (
-                        <span className="rounded-[6px] bg-success-soft px-2 py-[3px] text-[11px] font-semibold text-success">
-                          Onaylandı
-                        </span>
-                      ) : (
+                      {isOnaylanmamis(k) ? (
                         <span className="rounded-[6px] bg-[#FEF9C3] px-2 py-[3px] text-[11px] font-semibold text-[#A16207]">
                           Onaylanmadı
+                        </span>
+                      ) : (
+                        <span className="rounded-[6px] bg-success-soft px-2 py-[3px] text-[11px] font-semibold text-success">
+                          Onaylandı
                         </span>
                       )}
                       {k.paket && (

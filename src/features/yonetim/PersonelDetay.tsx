@@ -14,20 +14,23 @@ import { formatTL, numericStringToKurus, parseTLToKurus } from '../../lib/money'
 import type { Role } from '../../lib/types'
 import { BackChevron } from '../auth/EyeIcon'
 import {
+  useAktifIzinProfilleri,
   useGiveAvans,
   useGivePrim,
   useMember,
   useMemberBusinessIds,
   usePayMaas,
   usePersonelOdemeler,
+  usePrimPaketleri,
   useSetBusinessAccess,
   useSetRole,
   useSetStatus,
   useUpdateMemberPay,
 } from './api'
-import { ROLE_LABELS, ROLE_OPTIONS, type PersonelOdeme } from './types'
+import { odemeOnayli, ROLE_LABELS, ROLE_OPTIONS, type PersonelOdeme } from './types'
 import {
   Avatar,
+  CalendarBoxIcon,
   FormModal,
   GunDropdown,
   PencilIcon,
@@ -79,10 +82,19 @@ function OdemeList({
     >
       <div className="min-w-0">
         <div className="truncate text-sm font-semibold text-ink">{o.note || fallback}</div>
-        <div className="mt-[2px] text-xs text-muted">{formatRelativeDate(o.tarih)}</div>
+        <div className="mt-[2px] flex items-center gap-[6px] text-xs text-muted">
+          <span>{formatRelativeDate(o.tarih)}</span>
+          {/* 045: kasaya işlenmemiş avans/prim — toplamlara da girmiyor */}
+          {!odemeOnayli(o) && (
+            <span className="shrink-0 rounded-[6px] bg-[#FEF9C3] px-2 py-[2px] text-[10.5px] font-semibold text-[#A16207]">
+              Onay bekliyor
+            </span>
+          )}
+        </div>
       </div>
       <div
         className={`shrink-0 text-[15px] font-bold ${positive ? 'text-success' : 'text-danger'}`}
+        style={{ opacity: odemeOnayli(o) ? 1 : 0.45 }}
       >
         {positive ? '+' : '-'}
         {formatTL(numericStringToKurus(String(o.tutar)))}
@@ -174,7 +186,10 @@ export default function PersonelDetay() {
 
   const { data: member, isPending, isError } = useMember(id, businessId)
   const { data: odemeler = [] } = usePersonelOdemeler(id, businessId)
+  const { data: primPaketler = [] } = usePrimPaketleri(businessId)
   const { data: savedBusinessIds = [] } = useMemberBusinessIds(id, isYonetici)
+  // 048: bugün izindeyse başlıkta turuncu "İzinde" rozeti
+  const { data: izindekiler = new Set<string>() } = useAktifIzinProfilleri(businessId)
 
   const setRole = useSetRole()
   const updatePay = useUpdateMemberPay()
@@ -192,11 +207,14 @@ export default function PersonelDetay() {
     tutar: '',
     note: '',
   })
-  const [primModal, setPrimModal] = useState<{ open: boolean; tutar: string; note: string }>({
-    open: false,
-    tutar: '',
-    note: '',
-  })
+  // Prim (050): paketIds seçilirse tutar paketlerin toplamı olur (otomatik) ve
+  // açıklama = seçilen paket adları; hiç paket seçilmezse elle tutar + açıklama.
+  const [primModal, setPrimModal] = useState<{
+    open: boolean
+    tutar: string
+    note: string
+    paketIds: string[]
+  }>({ open: false, tutar: '', note: '', paketIds: [] })
   const [confirmMaas, setConfirmMaas] = useState(false)
   const [confirmStatus, setConfirmStatus] = useState(false)
   const [error, setError] = useState('')
@@ -213,12 +231,24 @@ export default function PersonelDetay() {
   const avanslar = useMemo(() => odemeler.filter((o) => o.tur === 'AVANS'), [odemeler])
   const primler = useMemo(() => odemeler.filter((o) => o.tur === 'PRIM'), [odemeler])
   const maaslar = useMemo(() => odemeler.filter((o) => o.tur === 'MAAS'), [odemeler])
+  // 045: Onay bekleyen avans/prim toplama GİRMEZ — bu rakamlar kasadan
+  // gerçekten çıkmış parayı gösterir (bekleyenler listede rozetle görünür)
   const sumCycle = (rows: typeof odemeler) =>
     rows
-      .filter((o) => o.tarih >= cycleStart)
+      .filter((o) => o.tarih >= cycleStart && odemeOnayli(o))
       .reduce((sum, o) => sum + numericStringToKurus(String(o.tutar)), 0)
   const cycleAvansKurus = sumCycle(avanslar)
   const cyclePrimKurus = sumCycle(primler)
+
+  // Prim (050): seçili paketler + tutar/açıklama türetimi. Paket seçiliyse
+  // tutar toplamdan gelir (canlı) ve açıklama = paket adları; hiç seçili
+  // değilse elle tutar + serbest açıklama.
+  const primSelected = primPaketler.filter((p) => primModal.paketIds.includes(p.id))
+  const primPaketMode = primSelected.length > 0
+  const primPaketToplamKurus = primSelected.reduce(
+    (s, p) => s + numericStringToKurus(String(p.tutar)),
+    0,
+  )
 
   if (isPending) {
     return (
@@ -310,19 +340,18 @@ export default function PersonelDetay() {
 
   async function onGivePrim() {
     setError('')
-    const kurus = parseTLToKurus(primModal.tutar)
+    // Paket seçiliyse tutar toplamdan + açıklama paket adları; yoksa elle giriş.
+    const kurus = primPaketMode ? primPaketToplamKurus : parseTLToKurus(primModal.tutar)
     if (kurus === null || kurus <= 0) {
       setError('Geçerli bir tutar girin.')
       return
     }
+    const note = primPaketMode
+      ? primSelected.map((p) => p.name).join(', ')
+      : primModal.note.trim()
     try {
-      await givePrim.mutateAsync({
-        profileId: id,
-        businessId,
-        kurus,
-        note: primModal.note.trim(),
-      })
-      setPrimModal({ open: false, tutar: '', note: '' })
+      await givePrim.mutateAsync({ profileId: id, businessId, kurus, note })
+      setPrimModal({ open: false, tutar: '', note: '', paketIds: [] })
     } catch {
       setError('Prim verilemedi. Tekrar deneyin.')
     }
@@ -387,10 +416,18 @@ export default function PersonelDetay() {
       {/* Kimlik */}
       <div className="flex items-center gap-[14px] px-6 pt-3">
         <Avatar name={member.profile.full_name || '?'} size={60} />
-        <div className="min-w-0">
-          <h1 className="truncate text-[22px] font-bold tracking-[-0.3px] text-ink">
-            {member.profile.full_name || 'İsimsiz'}
-          </h1>
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 items-center gap-2">
+            <h1 className="truncate text-[22px] font-bold tracking-[-0.3px] text-ink">
+              {member.profile.full_name || 'İsimsiz'}
+            </h1>
+            {izindekiler.has(id) && (
+              <span className="flex shrink-0 items-center gap-[5px]">
+                <span className="h-[7px] w-[7px] rounded-full bg-warn" />
+                <span className="text-[13px] font-semibold text-warn">İzinde</span>
+              </span>
+            )}
+          </div>
           <div className="mt-[3px] flex items-center gap-2">
             <span className="text-sm text-muted">
               {disabled
@@ -411,6 +448,16 @@ export default function PersonelDetay() {
             )}
           </div>
         </div>
+        {/* 048: kişinin izin ekranı (görüntüleme herkese; ekleme/silme
+            kademeli — Muhasebe yalnızca Personel hedefte, RLS zorlar) */}
+        <button
+          type="button"
+          onClick={() => void navigate(`/yonetim/personel/${id}/izinler`)}
+          className="pressable flex shrink-0 cursor-pointer items-center gap-[7px] rounded-[12px] bg-field px-[14px] py-[10px]"
+        >
+          <CalendarBoxIcon size={16} color="var(--color-ink)" />
+          <span className="text-[13.5px] font-semibold text-ink">Yıllık İzin</span>
+        </button>
       </div>
 
       <div className="flex flex-col gap-4 px-6 pt-[22px]">
@@ -563,7 +610,7 @@ export default function PersonelDetay() {
               type="button"
               onClick={() => {
                 setError('')
-                setPrimModal({ open: true, tutar: '', note: '' })
+                setPrimModal({ open: true, tutar: '', note: '', paketIds: [] })
               }}
               className="flex cursor-pointer items-center gap-[5px] rounded-[10px] bg-success px-3 py-[7px]"
             >
@@ -736,9 +783,6 @@ export default function PersonelDetay() {
             className={modalInputCls}
           />
         </div>
-        <p className="text-xs leading-relaxed text-faint">
-          Avans onay beklemeden kasaya gider olarak işlenir.
-        </p>
       </FormModal>
 
       {/* Prim modal */}
@@ -749,32 +793,78 @@ export default function PersonelDetay() {
         busy={givePrim.isPending}
         confirmLabel="Ver"
         onConfirm={() => void onGivePrim()}
-        onClose={() => setPrimModal({ open: false, tutar: '', note: '' })}
+        onClose={() => setPrimModal({ open: false, tutar: '', note: '', paketIds: [] })}
       >
+        {/* Paket seçici (050) — tutarın ÜSTÜNDE. Seçilenlerin tutarı canlı
+            toplanır; hiç paket tanımlı değilse bu blok hiç görünmez. */}
+        {primPaketler.length > 0 && (
+          <div>
+            <div className={modalFieldLabel}>PRİM PAKETLERİ</div>
+            <div className="flex flex-wrap gap-2">
+              {primPaketler.map((p) => {
+                const selected = primModal.paketIds.includes(p.id)
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() =>
+                      setPrimModal((m) => ({
+                        ...m,
+                        paketIds: selected
+                          ? m.paketIds.filter((x) => x !== p.id)
+                          : [...m.paketIds, p.id],
+                      }))
+                    }
+                    className="cursor-pointer rounded-[12px] border-[1.5px] px-3 py-2 text-[13px] font-semibold"
+                    style={{
+                      background: selected ? 'var(--seg-on)' : 'var(--seg)',
+                      borderColor: selected ? 'var(--seg-on)' : 'var(--color-inputline)',
+                      color: selected ? 'var(--seg-fg-on)' : 'var(--seg-fg)',
+                    }}
+                  >
+                    {p.name} · {formatTL(numericStringToKurus(String(p.tutar)))}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
         <div>
           <div className={modalFieldLabel}>TUTAR (₺)</div>
-          <input
-            type="text"
-            inputMode="decimal"
-            placeholder="0"
-            value={primModal.tutar}
-            onChange={(e) => setPrimModal((m) => ({ ...m, tutar: e.target.value }))}
-            className={modalInputCls}
-          />
+          {primPaketMode ? (
+            // Paket seçiliyken tutar otomatik = paketlerin toplamı (salt okunur)
+            <div className={`${modalInputCls} flex items-center justify-between`}>
+              <span className="font-bold text-ink">{formatTL(primPaketToplamKurus)}</span>
+              <span className="text-[11px] font-semibold text-faint">
+                {primSelected.length} paket
+              </span>
+            </div>
+          ) : (
+            <input
+              type="text"
+              inputMode="decimal"
+              placeholder="0"
+              value={primModal.tutar}
+              onChange={(e) => setPrimModal((m) => ({ ...m, tutar: e.target.value }))}
+              className={modalInputCls}
+            />
+          )}
         </div>
-        <div>
-          <div className={modalFieldLabel}>AÇIKLAMA</div>
-          <input
-            type="text"
-            value={primModal.note}
-            onChange={(e) => setPrimModal((m) => ({ ...m, note: e.target.value }))}
-            className={modalInputCls}
-          />
-        </div>
-        <p className="text-xs leading-relaxed text-faint">
-          Prim maaşa ek ödemedir; onay beklemeden kasaya gider olarak işlenir, maaştan
-          düşülmez.
-        </p>
+
+        {/* Açıklama yalnızca paket seçilmediğinde — paket seçiliyse işleme
+            paket adları yazılır (050) */}
+        {!primPaketMode && (
+          <div>
+            <div className={modalFieldLabel}>AÇIKLAMA</div>
+            <input
+              type="text"
+              value={primModal.note}
+              onChange={(e) => setPrimModal((m) => ({ ...m, note: e.target.value }))}
+              className={modalInputCls}
+            />
+          </div>
+        )}
       </FormModal>
 
       {/* Maaş öde onayı */}

@@ -1,4 +1,4 @@
-import { kurusToNumericString, parseTLToKurus } from '../../lib/money'
+import { kurusToNumericString, numericStringToKurus, parseTLToKurus } from '../../lib/money'
 import type { OdemeYontemi } from '../../lib/types'
 import type { KayitFinansAlanlari } from './types'
 
@@ -6,6 +6,22 @@ export const YONTEM_LABELS: Record<OdemeYontemi, string> = {
   NAKIT: 'Nakit',
   KREDI_KARTI: 'Kredi Kartı',
   HAVALE: 'Havale',
+}
+
+/**
+ * Komisyonun hesaplanacağı taban (banka oranı bununla çarpılır): elle girilen
+ * tutar, yoksa paket fiyatı — gelirin hangi tutardan doğduğuyla birebir aynı
+ * kural (`coalesce(tutar, paket fiyatı)`, 034). Hiçbiri yoksa null.
+ */
+export function gelirBaseKurus(
+  tutar: string,
+  paketFiyati: string | number | null,
+): number | null {
+  if (tutar.trim() !== '') {
+    const k = parseTLToKurus(tutar)
+    return k !== null && k > 0 ? k : null
+  }
+  return paketFiyati != null ? numericStringToKurus(paketFiyati) : null
 }
 
 export interface FinansForm {

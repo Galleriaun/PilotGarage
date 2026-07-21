@@ -8,6 +8,9 @@ interface ConfirmDialogProps {
   cancelLabel?: string
   danger?: boolean
   busy?: boolean
+  /** Onay denemesi başarısız olduğunda mesajın altında gösterilir;
+   *  diyalog açık kalır, kullanıcı tekrar dener ya da vazgeçer. */
+  error?: string
   onConfirm: () => void
   onCancel: () => void
 }
@@ -25,6 +28,7 @@ export default function ConfirmDialog({
   cancelLabel = 'İptal',
   danger = false,
   busy = false,
+  error = '',
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
@@ -43,6 +47,11 @@ export default function ConfirmDialog({
             <Dialog.Description className="mb-5 text-sm leading-relaxed text-muted">
               {message}
             </Dialog.Description>
+            {error && (
+              <p className="-mt-3 mb-4 text-[12.5px] font-medium leading-relaxed text-danger">
+                {error}
+              </p>
+            )}
             <div className="flex gap-2">
               <button
                 type="button"

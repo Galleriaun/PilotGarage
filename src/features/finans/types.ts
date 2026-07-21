@@ -2,7 +2,14 @@ import type { OdemeYontemi } from '../../lib/types'
 
 export type IslemTur = 'GELIR' | 'GIDER'
 export type IslemDurum = 'BEKLIYOR' | 'ONAYLANDI' | 'REDDEDILDI'
-export type IslemKaynak = 'MANUEL' | 'KAYIT' | 'CARI_HESAP' | 'SABIT_GIDER' | 'PERSONEL'
+export type IslemKaynak =
+  | 'MANUEL'
+  | 'KAYIT'
+  | 'CARI_HESAP'
+  | 'SABIT_GIDER'
+  | 'PERSONEL'
+  /** Hesaba Para Aktarımı bacağı (041) — iç aktarım, ciro/gidere sayılmaz. */
+  | 'TRANSFER'
 export type TekrarSiklik = 'HAFTALIK' | 'AYLIK' | 'YILLIK'
 
 export interface Kategori {
@@ -30,6 +37,18 @@ export interface Islem {
   komisyon: number | string | null
   /** CARI_HESAP işlem with NULL here = its işletme was deleted (015). */
   cari_hareket_id: string | null
+  /** Non-null = this row IS a KK komisyon gideri linked to its parent (039). */
+  komisyon_of: string | null
+  /** Non-null = transferin EŞ bacağı (KK girişi); listede gizlenir (041). */
+  transfer_of: string | null
+  /** Non-null = bu satır, işaret ettiği aktarımın GERİ ALMA'sıdır (042). */
+  iade_of: string | null
+  /** Non-null = cron'un ürettiği sabit gider işlemi (016) — born-ONAYLANDI,
+   *  Onay'dan hiç geçmez. */
+  sabit_gider_id: string | null
+  /** Non-null = cron'un ürettiği tekrar kuralı işlemi (019) — born-ONAYLANDI,
+   *  Onay'dan hiç geçmez. kaynak MANUEL olduğu için TEK ayırt edici bu. */
+  tekrar_kural_id: string | null
   created_at: string
   kategori: { id: string; label: string; tur: IslemTur } | null
   /** NULL = system entry (cron) or deleted account. */

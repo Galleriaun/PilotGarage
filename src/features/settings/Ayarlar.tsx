@@ -35,9 +35,10 @@ export default function Ayarlar() {
   const navigate = useNavigate()
   const { profile, signOut } = useAuth()
   const profileId = profile?.id ?? ''
-  // Personel only ever receives yeni-kayıt notifications — hide the rest
+  // Onay/silme/üyelik bildirimleri yalnızca Yöneticiye üretilir (044/018) —
+  // diğer roller için bunlar ölü düğme olurdu, sadece "yeni kayıt" kalır.
   const prefRows =
-    profile?.role === 'PERSONEL' ? PREF_ROWS.filter((r) => r.key === 'kayit') : PREF_ROWS
+    profile?.role === 'YONETICI' ? PREF_ROWS : PREF_ROWS.filter((r) => r.key === 'kayit')
   const { data: prefs = {} } = useNotifPrefs(profileId)
   const save = useSaveProfile()
 

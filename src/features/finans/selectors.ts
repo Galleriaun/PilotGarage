@@ -50,11 +50,74 @@ export function inRange(iso: string, range: DateRange | null): boolean {
   return iso >= range.start && iso <= range.end
 }
 
-/** Integer-kuruş sum of approved işlemler of one type within a range. */
-export function sumKurus(islemler: Islem[], tur: IslemTur, range: DateRange | null): number {
+/**
+ * Hesaba Para Aktarımı bacağı mı? (041)
+ *
+ * Transfer iç aktarımdır: para işletmeye girmez/çıkmaz, yalnızca Nakit kovasından
+ * Kredi Kartı kovasına geçer. Bu yüzden ciro/gider toplamlarına ve raporlara
+ * GİRMEZ, ama kova (yöntem) matematiğine GİRER.
+ */
+export function isTransfer(i: Islem): boolean {
+  return i.kaynak === 'TRANSFER'
+}
+
+/**
+ * Transferin listede gizlenen eş bacağı mı? (ana bacak tek satır gösterilir)
+ *
+ * DİKKAT — bu yüklem bir satırı listeden TAMAMEN gizler, o yüzden hatalı
+ * tarafı ucuz olan yöne kurulmuştur:
+ *   • `kaynak === 'TRANSFER'` şartı olmadan, `transfer_of` kolonu okunamadığı
+ *     her durumda (migration 041 uygulanmamış bir DB'de kolon yoktur →
+ *     `undefined !== null` TRUE döner) TÜM işlemler eş bacak sanılıp liste
+ *     boşalıyordu.
+ *   • `!= null` (gevşek) hem null hem undefined'ı eler.
+ * Yanlış tarafa düşerse sonuç "transferin ikinci bacağı da görünür" olur —
+ * can sıkıcı ama görünür; tersi sessizce her şeyi yok ediyordu.
+ */
+export function isTransferEs(i: Islem): boolean {
+  return isTransfer(i) && i.transfer_of != null
+}
+
+/**
+ * Onaya geri gönderilebilir mi? (040) — YALNIZCA gerçekten Onay'dan geçmiş,
+ * bir insanın onayladığı işlemler. Onay'a hiç DÜŞMEYEN (born-ONAYLANDI)
+ * satırlar dışlanır, yoksa Onay kuyruğunu hiç girmedikleri hâlde oraya
+ * düşerler:
+ *   • kaynak PERSONEL (maaş) — RPC personel_odemeler bağı yüzünden reddeder
+ *   • komisyon çocuğu (komisyon_of) — ana işlemle birlikte yönetilir
+ *   • sabit gider (sabit_gider_id) — cron born-ONAYLANDI (016)
+ *   • tekrar kuralı (tekrar_kural_id) — cron born-ONAYLANDI (019); kaynak'ı
+ *     MANUEL olduğu için gerçek manuel girişten TEK ayırt edici bu kolon
+ * Transfer BURADA ele alınmaz — kendi "Transferi Geri Al" akışı var; çağıran
+ * onu ayrıca yönlendirir. Sınır RPC'de de var (049), bu yalnızca UI.
+ */
+export function onayaGeriGonderilebilir(i: Islem): boolean {
+  return (
+    !isTransfer(i) &&
+    i.komisyon_of == null &&
+    i.kaynak !== 'PERSONEL' &&
+    i.sabit_gider_id == null &&
+    i.tekrar_kural_id == null
+  )
+}
+
+/**
+ * Integer-kuruş sum of approved işlemler of one type within a range.
+ * Transfer bacakları varsayılan olarak HARİÇ (ciro/gider toplamları); kova
+ * matematiği için `{ transferDahil: true }` ile çağrılır.
+ */
+export function sumKurus(
+  islemler: Islem[],
+  tur: IslemTur,
+  range: DateRange | null,
+  opts?: { transferDahil?: boolean },
+): number {
   let total = 0
   for (const i of islemler) {
-    if (i.tur === tur && inRange(i.islem_tarihi, range)) total += i.kurus
+    if (i.tur !== tur) continue
+    if (!opts?.transferDahil && isTransfer(i)) continue
+    if (!inRange(i.islem_tarihi, range)) continue
+    total += i.kurus
   }
   return total
 }

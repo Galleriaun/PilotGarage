@@ -52,20 +52,26 @@ Three fixed roles (design role picker) plus one implicit lifecycle state:
 | Yönetim (finance home, widgets) | ❌ | ✅ | ✅ |
 | Gelir/Gider Ekle (→ Onay queue) | ❌ | ✅ | ✅ |
 | Tüm İşlemler (history + filters) | ❌ | ✅ | ✅ |
-| **Onay** (approve/reject pending) | ❌ | ✅ | ✅ |
+| **Onay** (approve/reject pending, kayıt silme kararı) | ❌ | ❌ | ✅ |
+| **İstekler** (avans/şikayet/öneri — see *and* decide) | own only | ❌ | ✅ |
 | İşletmeler (cari hesap) + hareket + yansıt | ❌ | ✅ | ✅ |
 | Paket & Fiyatlar management | ❌ | ✅ | ✅ |
 | Personel management (roster, maaş, avans) | ❌ | ✅ | ✅ |
+| **İzinler** (yıllık izin ekle/sil) | ❌ | Personel hedefler | ✅ herkes |
 | **Rol Değiştir** (change a user's role) | ❌ | ❌ | ✅ |
 | **İşletme Erişimi** (grant/revoke business access) | ❌ | ❌ | ✅ |
 | Sabit Giderler management | ❌ | ✅ | ✅ |
-| İşletme Ayarları (name, categories) | ❌ | ✅ | ✅ |
+| **İşletme Ayarları** (name, categories, mesai konum/IP) | ❌ | ❌ | ✅ |
 | Approve signups / assign roles | ❌ | ❌ | ✅ |
 | Business access | assigned only | assigned only | **both, always** |
 
-- **Muhasebe = Yönetici minus role control** (owner decision, 2026-07-07): full management + finance access within assigned business(es); anything that changes a user's role, grants/revokes business access, or approves a signup stays Yönetici-only ("for now" — may loosen later).
-- The **Onay floating badge** renders for `MUHASEBE` and `YONETICI` — deliberate deviation from the design README (which drew it Yönetici-only), superseded by the owner decision above.
-- Muhasebe uses the Yönetici bottom nav and the full Yönetim Menü; only role controls (Rol Değiştir, signup approval) are hidden.
+- **Muhasebe = Yönetici minus role control minus Onay** (owner decision 2026-07-07, narrowed 2026-07-20 by migration 044): full management + finance access within assigned business(es), but **approving/rejecting** a pending işlem or a kayıt silme isteği is Yönetici-only, as is anything that changes a user's role, grants/revokes business access, or approves a signup. Muhasebe still *creates* entries that land in the Onay queue and still deletes işlemler — it just cannot be the one to decide them.
+- The **Onay floating badge** renders for `YONETICI` only (044) — back in line with the design README, which drew it Yönetici-only. Route `/yonetim/onay` is guarded the same way; the real boundary is in the RPCs (`approve_islem`, `reject_islem`, `approve_kayit_silme`, `reject_kayit_silme`).
+- ONAY / KAYIT_SILME **notifications** are generated for and visible to Yönetici only (044) — Muhasebe must not be pinged about a screen it cannot open.
+- **İstekler are Yönetici-only, including visibility** (046, 2026-07-21): Muhasebe cannot read the `istekler` table at all, not merely the screen — a şikayet may be about the Muhasebe. Staff still file their own and see them under İsteklerim.
+- **İzinler are tiered** (048, 2026-07-21): Muhasebe adds/deletes leave only for PERSONEL-role members; Yönetici for everyone. The target's role is checked in RLS (`izin_yazabilir`, SECURITY DEFINER), not just the UI. Reads are finance-wide so the "İzinde" badge renders everywhere.
+- **İşletme Ayarları is Yönetici-only** (047, 2026-07-21): the `businesses` UPDATE policy and `kategoriler` INSERT/UPDATE policies require Yönetici — name/telefon/adres, mesai konum + ofis IP'leri, and kategori add/soft-delete. Reads are untouched (Muhasebe still reads kategoriler for the Gelir/Gider picker and reports).
+- Muhasebe uses the Yönetici bottom nav and the Yönetim Menü; role controls (Rol Değiştir, signup approval), Onay, İstekler and İşletme Ayarları are hidden.
 - **Yönetici decides per user which business(es) they see** — PilotGarage only, Arabam.com only, or both — via an **İşletme Erişimi** selector in Personel Detay (owner decision 2026-07-07; this control is an addition to the design prototype, which has none).
 - Business switching: Yönetici switches freely (İşletme Seç + in-app switcher); Personel/Muhasebe assigned to one business skip İşletme Seç entirely; if assigned to both, they get the picker too. Last choice remembered in `localStorage`.
 
@@ -119,7 +125,7 @@ Soft deletes (`is_active`) on `paketler` and `kategoriler` because history refer
 **Rule zero: nothing touches the kasa until Yönetici or Muhasebe approves it.** Every money entry is born `BEKLIYOR` in `islemler` and only counts after `ONAYLANDI` — with **one deliberate exception** (owner decision, 2026-07-07): **maaş and avans payments (`kaynak = PERSONEL`) skip the Onay queue and are born `ONAYLANDI`**, because the person triggering them is already an approver. The `pay_maas` / `give_avans` RPCs verify the caller is an active Yönetici/Muhasebe and stamp `onaylayan` at insert; cron auto-payments on `odeme_gunu` are likewise born `ONAYLANDI` (`onaylayan = NULL`, audit-logged as system). Born-approved rows are immutable like any approved row — corrections are counter-entries.
 
 - **Balance is a view, not a column.** `v_kasa_ozet` computes gelir/gider/bakiye per business strictly from `durum = 'ONAYLANDI'` rows. Period widgets (Tümü/Bugün/Hafta/Ay) and Tüm İşlemler filter server-side over the same rows. No drift possible.
-- **State machine enforced in the DB.** Clients get `INSERT` (as `BEKLIYOR` only — enforced by CHECK/RLS `WITH CHECK`) and `SELECT`. Direct `UPDATE`/`DELETE` on `islemler` is denied. The only transitions are `approve_islem(id, ödeme_yöntemi?)` / `reject_islem(id)` — `SECURITY DEFINER` RPCs that verify the caller is an active Yönetici or Muhasebe (Muhasebe business-scoped), stamp `onaylayan`/`onaylanma_tarihi`, and audit-log.
+- **State machine enforced in the DB.** Clients get `INSERT` (as `BEKLIYOR` only — enforced by CHECK/RLS `WITH CHECK`) and `SELECT`. Direct `UPDATE`/`DELETE` on `islemler` is denied. The only transitions are `approve_islem(id, ödeme_yöntemi?, komisyon?)` / `reject_islem(id)` — `SECURITY DEFINER` RPCs that verify the caller is an active **Yönetici** with access to the business (narrowed from finance by 044, 2026-07-20), stamp `onaylayan`/`onaylanma_tarihi`, and audit-log.
 - **Ödeme yöntemi (Nakit / Kredi Kartı)** — owner decision 2026-07-07: transactions carry an optional payment method. It is *not* asked on the kayıt screens; for `KAYIT`-sourced işlemler the approver picks it in the Onay section, and `approve_islem` **refuses** to approve a `KAYIT` işlem without one (DB-enforced). Manual entries set it in Gelir/Gider Ekle (Sprint 2); maaş/avans and cron entries leave it NULL. A trigger rejects any mutation of a row already `ONAYLANDI`/`REDDEDILDI` — corrections are made with a counter-entry (standard accounting), never by editing history.
 - **Pending rows** may be deleted by their creator, Muhasebe, or Yönetici (typo escape hatch) while still `BEKLIYOR`.
 - **Linked side effects are atomic.** `approve_islem` on a `CARI_HESAP` entry sets the linked `cari_hareketler.kasa_durumu = 'YANSIDI'`; reject resets it to `'YOK'` — same transaction, exactly as the prototype behaves.
@@ -218,7 +224,7 @@ Turkey is UTC+3 year-round (no DST since 2016). `pg_cron` runs in UTC → the da
 - [ ] Pending/NULL-role user gets zero rows on every table (automated RLS test)
 - [ ] Muhasebe cannot change any user's role, status, or business access — verified in the UI *and* against the API/RPCs directly
 - [ ] A user assigned to one business sees zero rows from the other business on every table (automated RLS test)
-- [ ] Onay gate verified: no path writes an `ONAYLANDI` işlem except `approve_islem` and the maaş/avans RPCs; approved rows immutable
+- [ ] Onay gate verified: no path writes an `ONAYLANDI` işlem except `approve_islem`, `pay_maas` (+ the cron's auto-maaş), the sabit gider / tekrar materializer (016, 019) and `para_transferi` (041). **Avans and prim are NOT exceptions since 045** — they are born `BEKLIYOR` like everything else. Approved rows immutable.
 - [ ] A `KAYIT`-sourced işlem cannot be approved without ödeme yöntemi — verified against the RPC directly, not just the UI
 - [ ] `v_kasa_ozet` equals hand-computed totals on seeded data (all period filters)
 - [ ] Cari yansıt → approve/reject → `kasa_durumu` round-trip correct

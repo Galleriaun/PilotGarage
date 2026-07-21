@@ -262,6 +262,64 @@ export function useApproveIslem() {
   })
 }
 
+/**
+ * Hesaba Para Aktarımı (041): Nakit kovasından Kredi Kartı kovasına aktarım.
+ * RPC iki bacağı (nakit gideri + KK geliri) atomik olarak born-ONAYLANDI yazar;
+ * kasa toplamı değişmez, yalnızca kovalar kayar.
+ */
+export function useParaTransferi() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ businessId, kurus }: { businessId: string; kurus: number }) => {
+      const { error } = await supabase.rpc('para_transferi', {
+        p_business: businessId,
+        p_tutar: kurusToNumericString(kurus),
+      })
+      if (error) throw error
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['islemler'] })
+    },
+  })
+}
+
+/**
+ * Transferi Geri Al (042) — Yönetici-only. Silmez: ters yönde ikinci bir
+ * aktarım ("Transfer Geri Alma") yazar, tutar kaynak kovaya geri döner.
+ */
+export function useTransferGeriAl() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ islemId }: { islemId: string }) => {
+      const { error } = await supabase.rpc('transfer_geri_al', { p_islem_id: islemId })
+      if (error) throw error
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['islemler'] })
+    },
+  })
+}
+
+/** Yönetici-only (040): onaylanmış işlemi tekrar Onay kuyruğuna döndürür.
+ *  Kasadan çıkar; bağlı KK komisyonu silinir (yeniden onayda tekrar doğar);
+ *  cari hareket YANSIDI → BEKLIYOR'a döner. */
+export function useOnayaGeriGonder() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ islemId }: { islemId: string }) => {
+      const { error } = await supabase.rpc('islem_onaya_geri_gonder', {
+        p_islem_id: islemId,
+      })
+      if (error) throw error
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['islemler'] })
+      void queryClient.invalidateQueries({ queryKey: ['cari'] })
+      void queryClient.invalidateQueries({ queryKey: ['cari-detail'] })
+    },
+  })
+}
+
 export function useApproveKayitSilme() {
   const queryClient = useQueryClient()
   return useMutation({
