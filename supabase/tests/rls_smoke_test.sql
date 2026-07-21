@@ -5,7 +5,7 @@
 -- Everything happens inside one transaction that is ROLLED BACK at the
 -- end — no test data survives, safe to run on the live project.
 --
--- Prerequisite: migrations 001–050 applied. (Checks were written against
+-- Prerequisite: migrations 001–051 applied. (Checks were written against
 -- 001–013; the later migrations keep every asserted behavior — decided-row
 -- immutability now has RPC-only escape hatches that this file does not
 -- exercise, so all checks still pass unchanged.)
@@ -1473,6 +1473,74 @@ begin
   if n <> 0 then raise exception 'FAIL: Yönetici prim paketini silemedi (050)'; end if;
   perform pg_temp.logout();
   raise notice 'PASS 32: prim paketleri — yazma Yönetici / okuma finans / Personel görmez; give_prim baslik (050)';
+
+  -- ═══ 33) 051: Kaydı elle tekrar Onay'a gönder — çift gelir YASAK ═══
+  -- Yönetici-only; BEKLIYOR gelir varken NO-OP (yeni satır açılmaz); reddedilen
+  -- gelir sonrası yeni BEKLIYOR açılır; onaylanmış gelir varken RED. Doğan gelir
+  -- otomatik yolla (034) birebir aynı.
+
+  perform pg_temp.login(u_muhasebe); -- kayıt oluşturmak finansın; tutar finansta korunur
+  insert into kayitlar (business_id, plaka, musteri_adi, durum, tutar, created_by)
+  values (v_servis, '34 TEKRAR', 'Tekrar Onay', 'TAMAMLANDI', 300.00, u_muhasebe)
+  returning id into v_kayit;
+  perform pg_temp.logout();
+
+  -- TAMAMLANDI insert otomatik BEKLIYOR gelir doğurur (034 trigger)
+  select count(*) into n from islemler where kayit_id = v_kayit;
+  if n <> 1 then raise exception 'FAIL: TAMAMLANDI kayıt otomatik 1 gelir doğurmalı, got %', n; end if;
+  select id into v_islem_c1 from islemler where kayit_id = v_kayit;
+  select durum::text into v_durum from islemler where id = v_islem_c1;
+  if v_durum <> 'BEKLIYOR' then raise exception 'FAIL: otomatik gelir BEKLIYOR olmalı, got %', v_durum; end if;
+
+  -- yetki: Muhasebe çağıramaz (Onay Yönetici-only, 044/051)
+  perform pg_temp.login(u_muhasebe);
+  begin
+    perform kayit_tekrar_onaya_gonder(v_kayit);
+    raise exception 'FAIL: Muhasebe kaydı tekrar onaya gönderebildi (051)';
+  exception when others then
+    if sqlerrm like 'FAIL:%' then raise; end if; -- expected: yalnızca Yönetici
+  end;
+  perform pg_temp.logout();
+
+  perform pg_temp.login(u_yonetici);
+  -- BEKLIYOR gelir varken NO-OP: yeni satır AÇILMAZ (çift gelir yok)
+  perform kayit_tekrar_onaya_gonder(v_kayit);
+  select count(*) into n from islemler where kayit_id = v_kayit;
+  if n <> 1 then
+    raise exception 'FAIL: BEKLIYOR gelir varken tekrar gönderme çift satır açtı, got %', n;
+  end if;
+
+  -- reddet → aktif gelir kalmaz → tekrar gönderme yeni BEKLIYOR açar
+  perform reject_islem(v_islem_c1);
+  perform kayit_tekrar_onaya_gonder(v_kayit);
+  select count(*) into n from islemler where kayit_id = v_kayit and durum = 'BEKLIYOR';
+  if n <> 1 then
+    raise exception 'FAIL: reddedilen gelir sonrası tam 1 BEKLIYOR olmalı, got %', n;
+  end if;
+  select count(*) into n from islemler where kayit_id = v_kayit; -- 1 REDDEDILDI + 1 yeni
+  if n <> 2 then
+    raise exception 'FAIL: kayıt gelir geçmişi 2 satır olmalı (1 red + 1 yeni), got %', n;
+  end if;
+  select id into v_islem_c2 from islemler where kayit_id = v_kayit and durum = 'BEKLIYOR';
+  select tutar::text into v_durum from islemler where id = v_islem_c2;
+  if v_durum <> '300.00' then
+    raise exception 'FAIL: yeni gelir tutarı 300.00 olmalı (034 ile aynı), got %', v_durum;
+  end if;
+
+  -- onayla → onaylanmış gelir varken tekrar gönderme REDDEDİLİR (çift sayım yok)
+  perform approve_islem(v_islem_c2, 'NAKIT');
+  begin
+    perform kayit_tekrar_onaya_gonder(v_kayit);
+    raise exception 'FAIL: onaylanmış gelir varken tekrar onaya gönderilebildi (051)';
+  exception when others then
+    if sqlerrm like 'FAIL:%' then raise; end if; -- expected: Onaya Geri Gönder kullanılmalı
+  end;
+  select count(*) into n from islemler where kayit_id = v_kayit and durum = 'BEKLIYOR';
+  if n <> 0 then
+    raise exception 'FAIL: onaylanmış gelir varken yeni BEKLIYOR açıldı, got %', n;
+  end if;
+  perform pg_temp.logout();
+  raise notice 'PASS 33: kaydı tekrar onaya gönder — Yönetici-only, BEKLIYOR NO-OP, red→yeni, onaylı→red (051)';
 
   raise notice '';
   raise notice '=== ALL TESTS PASSED (rolling back — no test data persists) ===';

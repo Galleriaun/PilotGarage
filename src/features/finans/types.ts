@@ -35,6 +35,9 @@ export interface Islem {
   odeme_yontemi: OdemeYontemi | null
   /** KK komisyonu (033): pending rows carry it until approval deducts it. */
   komisyon: number | string | null
+  /** KAYIT kaynaklı işlemin kaydı; NULL = kayıt silinmiş (013). "Oluşturulduğu
+   *  yere git" (kayıt detayı) için. */
+  kayit_id: string | null
   /** CARI_HESAP işlem with NULL here = its işletme was deleted (015). */
   cari_hareket_id: string | null
   /** Non-null = this row IS a KK komisyon gideri linked to its parent (039). */
@@ -53,6 +56,12 @@ export interface Islem {
   kategori: { id: string; label: string; tur: IslemTur } | null
   /** NULL = system entry (cron) or deleted account. */
   creator: { full_name: string } | null
+  /** CARI_HESAP kaynağının işletmesi — "oluşturulduğu yere git" (işletme
+   *  detayı) için. NULL = hareket/işletme silinmiş (015). */
+  cari_hareket: { cari_isletme_id: string } | null
+  /** PERSONEL kaynağının (avans/prim/maaş) personeli — 0 ya da 1 satır.
+   *  "Oluşturulduğu yere git" (personel detayı) için. */
+  personel_odeme: { profile_id: string }[]
 }
 
 export interface SabitGider {

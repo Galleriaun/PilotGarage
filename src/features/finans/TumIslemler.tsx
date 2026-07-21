@@ -18,6 +18,7 @@ import {
 } from './api'
 import {
   inRange,
+  islemOrigin,
   isTransfer,
   isTransferEs,
   onayaGeriGonderilebilir,
@@ -432,11 +433,16 @@ export default function TumIslemler() {
           </div>
         ) : (
           <div className="flex flex-col gap-[10px]">
-            {visible.map((i) => (
+            {visible.map((i) => {
+              const origin = islemOrigin(i)
+              return (
               <TxCard
                 key={i.id}
                 islem={i}
                 variant="gray"
+                // işleme tıkla → oluşturulduğu yere git (kayıt/işletme/personel/
+                // sabit gider); kökeni olmayan (manuel/transfer) satırda kapalı
+                onOpen={origin ? () => void navigate(origin) : undefined}
                 onDelete={() => {
                   setDialogError('')
                   setDeleting(i)
@@ -465,7 +471,8 @@ export default function TumIslemler() {
                         : undefined
                 }
               />
-            ))}
+              )
+            })}
           </div>
         )}
       </div>

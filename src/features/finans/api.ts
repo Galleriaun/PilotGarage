@@ -13,9 +13,12 @@ import type {
 } from './types'
 
 // islemler has several FKs to profiles (created_by, onaylayan) — the
-// creator embed must name its constraint explicitly.
+// creator embed must name its constraint explicitly. cari_hareket +
+// personel_odeme feed "işleme tıkla → oluşturulduğu yere git" (TxCard onOpen):
+// cari hareketin işletmesi ve avans/prim/maaş satırının personeli. Embed'ler
+// RLS'e tabidir; finans ekranlarında dolu gelir, kaynak uymayan satırlarda boş.
 const ISLEM_SELECT =
-  '*, kategori:kategoriler(id,label,tur), creator:profiles!islemler_created_by_fkey(full_name)'
+  '*, kategori:kategoriler(id,label,tur), creator:profiles!islemler_created_by_fkey(full_name), cari_hareket:cari_hareketler(cari_isletme_id), personel_odeme:personel_odemeler(profile_id)'
 
 function withKurus(rows: unknown[]): Islem[] {
   return (rows as Omit<Islem, 'kurus'>[]).map((r) => ({

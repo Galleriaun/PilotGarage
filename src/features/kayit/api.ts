@@ -245,6 +245,24 @@ export function useRequestKayitSilme() {
   })
 }
 
+/** Yönetici-only: (re)queue the kayıt's gelir into the Onay section (051).
+ *  The RPC mirrors the tamamlandı trigger's dedup — no double income:
+ *  no-op if a BEKLIYOR gelir already exists, refuses if one is ONAYLANDI. */
+export function useKayitTekrarOnaya() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id }: { id: string }) => {
+      const { error } = await supabase.rpc('kayit_tekrar_onaya_gonder', { p_kayit_id: id })
+      if (error) throw error
+    },
+    onSuccess: (_data, { id }) => {
+      void queryClient.invalidateQueries({ queryKey: ['kayitlar'] })
+      void queryClient.invalidateQueries({ queryKey: ['kayit', id] })
+      void queryClient.invalidateQueries({ queryKey: ['islemler'] }) // Onay listesi + FAB sayısı
+    },
+  })
+}
+
 export function useDeletePhoto() {
   const queryClient = useQueryClient()
   return useMutation({

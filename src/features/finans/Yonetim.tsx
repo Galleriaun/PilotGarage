@@ -20,6 +20,7 @@ import {
   useTekrarKurallari,
 } from './api'
 import {
+  islemOrigin,
   isTransferEs,
   PERIOD_LABELS,
   PERIOD_SUBTITLES,
@@ -386,7 +387,17 @@ export default function Yonetim() {
               islemler
                 .filter((i) => !isTransferEs(i))
                 .slice(0, 4)
-                .map((i) => <TxCard key={i.id} islem={i} variant="white" />)
+                .map((i) => {
+                  const origin = islemOrigin(i)
+                  return (
+                    <TxCard
+                      key={i.id}
+                      islem={i}
+                      variant="white"
+                      onOpen={origin ? () => void navigate(origin) : undefined}
+                    />
+                  )
+                })
             )}
           </div>
 

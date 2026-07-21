@@ -4,6 +4,7 @@ import { useAuth } from '../../app/providers/AuthProvider'
 import { formatDateDots } from '../../lib/dates'
 import { formatTL, kurusToInput, numericStringToKurus } from '../../lib/money'
 import { canSeeFinance } from '../../lib/rbac'
+import { rpcErrorText } from '../../lib/errors'
 import type { OdemeYontemi } from '../../lib/types'
 import ConfirmDialog from '../../components/ui/ConfirmDialog'
 import { BackChevron } from '../auth/EyeIcon'
@@ -11,6 +12,7 @@ import {
   useAddPhotos,
   useDeletePhoto,
   useKayit,
+  useKayitTekrarOnaya,
   usePaketler,
   usePhotoUrls,
   useRequestKayitSilme,
@@ -74,8 +76,11 @@ export default function KayitDetay() {
   const addPhotos = useAddPhotos()
   const deletePhoto = useDeletePhoto()
   const requestSilme = useRequestKayitSilme()
+  const tekrarOnaya = useKayitTekrarOnaya()
   const { profile } = useAuth()
   const isFinance = canSeeFinance(profile?.role ?? null)
+  // Tekrar Onaya Gönder (051): karar Onay'da, o yüzden yalnızca Yönetici
+  const isYonetici = profile?.role === 'YONETICI'
 
   const [draft, setDraft] = useState<KayitFields | null>(null)
   const editing = draft !== null
@@ -89,6 +94,9 @@ export default function KayitDetay() {
   const [lightbox, setLightbox] = useState(false)
   const [durumMenuOpen, setDurumMenuOpen] = useState(false)
   const [pendingDurum, setPendingDurum] = useState<KayitDurum | null>(null)
+  // Tekrar Onaya Gönder (051) onay modalı; onayaError = RPC reddini gösterir
+  const [onayaOpen, setOnayaOpen] = useState(false)
+  const [onayaError, setOnayaError] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const fotograflar = useMemo(() => kayit?.fotograflar ?? [], [kayit])
@@ -231,6 +239,17 @@ export default function KayitDetay() {
       void navigate(-1)
     } catch {
       setError('Silinemedi. Tekrar deneyin.')
+    }
+  }
+
+  async function onTekrarOnaya() {
+    setOnayaError('')
+    try {
+      await tekrarOnaya.mutateAsync({ id })
+      setOnayaOpen(false)
+    } catch (e) {
+      // RPC reddi (ör. gelir zaten onaylanmış) diyalogda görünsün, kapanmasın
+      setOnayaError(rpcErrorText(e, 'Onaya gönderilemedi. Tekrar deneyin.'))
     }
   }
 
@@ -798,6 +817,19 @@ export default function KayitDetay() {
           </button>
         )}
 
+        {!editing && isYonetici && !kayit.silme_talebi_at && (
+          <button
+            type="button"
+            onClick={() => {
+              setOnayaError('')
+              setOnayaOpen(true)
+            }}
+            className="pressable mb-3 w-full cursor-pointer rounded-[14px] bg-field py-4 text-[15px] font-semibold text-ink"
+          >
+            Tekrar Onaya Gönder
+          </button>
+        )}
+
         {!editing && !kayit.silme_talebi_at && (
           <button
             type="button"
@@ -863,6 +895,23 @@ export default function KayitDetay() {
         busy={updateDurum.isPending}
         onConfirm={() => void confirmDurumChange()}
         onCancel={() => setPendingDurum(null)}
+      />
+
+      {/* Tekrar Onaya Gönder (051) — metin gelir zaten Onay'a düşmüş mü diye
+          değişir (hasActiveGelir = BEKLIYOR ya da ONAYLANDI gelir var) */}
+      <ConfirmDialog
+        open={onayaOpen}
+        title="Tekrar Onaya Gönder"
+        message={
+          hasActiveGelir
+            ? 'Bu kayıt zaten onaya gönderilmişti, tekrar onaya göndermek istiyor musunuz?'
+            : 'Bu kayıt onaya gönderilecek, onaylıyor musunuz?'
+        }
+        confirmLabel="Gönder"
+        busy={tekrarOnaya.isPending}
+        error={onayaError}
+        onConfirm={() => void onTekrarOnaya()}
+        onCancel={() => setOnayaOpen(false)}
       />
 
     </div>

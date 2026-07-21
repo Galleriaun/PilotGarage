@@ -38,6 +38,9 @@ import {
   modalInputCls,
 } from './shared'
 
+/** Prim Ver: her prim paketinden seçilebilecek en fazla adet (050). */
+const PRIM_ADET_MAX = 10
+
 /** Pay-cycle start: the last occurrence of the otomatik ödeme günü (avans
  *  and prim count toward the cycle, not the calendar month). gun = 0 (elle
  *  ödeme) falls back to the calendar month. */
@@ -49,6 +52,45 @@ function cycleStartISO(gun: number, todayISO: string): string {
   const py = m === 1 ? y - 1 : y
   const pm = m === 1 ? 12 : m - 1
   return `${py}-${String(pm).padStart(2, '0')}-${dd}`
+}
+
+/** Prim adet seçicideki tek ok butonu (yukarı = arttır, aşağı = azalt). */
+function StepArrow({
+  dir,
+  disabled,
+  onClick,
+}: {
+  dir: 'up' | 'down'
+  disabled: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={dir === 'up' ? 'Arttır' : 'Azalt'}
+      className="flex h-[22px] w-[28px] cursor-pointer items-center justify-center rounded-[7px] bg-field disabled:cursor-default disabled:opacity-35"
+      style={{ border: '1.5px solid var(--color-inputline)' }}
+    >
+      <svg
+        width="12"
+        height="12"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="var(--color-ink)"
+        strokeWidth="3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        {dir === 'up' ? (
+          <polyline points="6 15 12 9 18 15" />
+        ) : (
+          <polyline points="6 9 12 15 18 9" />
+        )}
+      </svg>
+    </button>
+  )
 }
 
 /** Payment history: last 3 collapsed; "Tümünü Gör" expands to month rows
@@ -207,14 +249,15 @@ export default function PersonelDetay() {
     tutar: '',
     note: '',
   })
-  // Prim (050): paketIds seçilirse tutar paketlerin toplamı olur (otomatik) ve
-  // açıklama = seçilen paket adları; hiç paket seçilmezse elle tutar + açıklama.
+  // Prim (050): her paketten kaç adet seçildiği (paketId → adet, 0–PRIM_ADET_MAX).
+  // Adet > 0 olan paket varsa tutar = Σ(paket tutarı × adet) — otomatik/canlı,
+  // açıklama = seçilen paketler (×adet); hiç seçili değilse elle tutar + açıklama.
   const [primModal, setPrimModal] = useState<{
     open: boolean
     tutar: string
     note: string
-    paketIds: string[]
-  }>({ open: false, tutar: '', note: '', paketIds: [] })
+    paketAdet: Record<string, number>
+  }>({ open: false, tutar: '', note: '', paketAdet: {} })
   const [confirmMaas, setConfirmMaas] = useState(false)
   const [confirmStatus, setConfirmStatus] = useState(false)
   const [error, setError] = useState('')
@@ -240,15 +283,29 @@ export default function PersonelDetay() {
   const cycleAvansKurus = sumCycle(avanslar)
   const cyclePrimKurus = sumCycle(primler)
 
-  // Prim (050): seçili paketler + tutar/açıklama türetimi. Paket seçiliyse
-  // tutar toplamdan gelir (canlı) ve açıklama = paket adları; hiç seçili
-  // değilse elle tutar + serbest açıklama.
-  const primSelected = primPaketler.filter((p) => primModal.paketIds.includes(p.id))
+  // Prim (050): adet>0 olan paketler + tutar/açıklama türetimi. Paket seçiliyse
+  // tutar = Σ(paket tutarı × adet) — canlı; açıklama = paket adları (×adet); hiç
+  // seçili değilse elle tutar + serbest açıklama. primPaketler sırası korunur.
+  const primSelected = primPaketler
+    .map((p) => ({ paket: p, adet: primModal.paketAdet[p.id] ?? 0 }))
+    .filter((x) => x.adet > 0)
   const primPaketMode = primSelected.length > 0
   const primPaketToplamKurus = primSelected.reduce(
-    (s, p) => s + numericStringToKurus(String(p.tutar)),
+    (s, x) => s + numericStringToKurus(String(x.paket.tutar)) * x.adet,
     0,
   )
+  const primToplamAdet = primSelected.reduce((s, x) => s + x.adet, 0)
+
+  // ±1 adım, 0–PRIM_ADET_MAX arası kilitli (her paketten en çok 10 adet)
+  function setPrimAdet(id: string, next: number) {
+    const adet = Math.max(0, Math.min(PRIM_ADET_MAX, next))
+    setPrimModal((m) => {
+      const paketAdet = { ...m.paketAdet }
+      if (adet === 0) delete paketAdet[id]
+      else paketAdet[id] = adet
+      return { ...m, paketAdet }
+    })
+  }
 
   if (isPending) {
     return (
@@ -346,12 +403,13 @@ export default function PersonelDetay() {
       setError('Geçerli bir tutar girin.')
       return
     }
+    // açıklama = seçilen paketler; adet > 1 ise "Ad ×N" (birden fazla aynı paket)
     const note = primPaketMode
-      ? primSelected.map((p) => p.name).join(', ')
+      ? primSelected.map((x) => (x.adet > 1 ? `${x.paket.name} ×${x.adet}` : x.paket.name)).join(', ')
       : primModal.note.trim()
     try {
       await givePrim.mutateAsync({ profileId: id, businessId, kurus, note })
-      setPrimModal({ open: false, tutar: '', note: '', paketIds: [] })
+      setPrimModal({ open: false, tutar: '', note: '', paketAdet: {} })
     } catch {
       setError('Prim verilemedi. Tekrar deneyin.')
     }
@@ -610,7 +668,7 @@ export default function PersonelDetay() {
               type="button"
               onClick={() => {
                 setError('')
-                setPrimModal({ open: true, tutar: '', note: '', paketIds: [] })
+                setPrimModal({ open: true, tutar: '', note: '', paketAdet: {} })
               }}
               className="flex cursor-pointer items-center gap-[5px] rounded-[10px] bg-success px-3 py-[7px]"
             >
@@ -793,37 +851,48 @@ export default function PersonelDetay() {
         busy={givePrim.isPending}
         confirmLabel="Ver"
         onConfirm={() => void onGivePrim()}
-        onClose={() => setPrimModal({ open: false, tutar: '', note: '', paketIds: [] })}
+        onClose={() => setPrimModal({ open: false, tutar: '', note: '', paketAdet: {} })}
       >
-        {/* Paket seçici (050) — tutarın ÜSTÜNDE. Seçilenlerin tutarı canlı
-            toplanır; hiç paket tanımlı değilse bu blok hiç görünmez. */}
+        {/* Paket seçici (050) — tutarın ÜSTÜNDE. Her paketten adet seçilir
+            (yukarı/aşağı ok, 0–PRIM_ADET_MAX); tutar Σ(tutar × adet) ile canlı
+            değişir. Hiç paket tanımlı değilse bu blok hiç görünmez. */}
         {primPaketler.length > 0 && (
           <div>
             <div className={modalFieldLabel}>PRİM PAKETLERİ</div>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-col gap-2">
               {primPaketler.map((p) => {
-                const selected = primModal.paketIds.includes(p.id)
+                const adet = primModal.paketAdet[p.id] ?? 0
+                const active = adet > 0
                 return (
-                  <button
+                  <div
                     key={p.id}
-                    type="button"
-                    onClick={() =>
-                      setPrimModal((m) => ({
-                        ...m,
-                        paketIds: selected
-                          ? m.paketIds.filter((x) => x !== p.id)
-                          : [...m.paketIds, p.id],
-                      }))
-                    }
-                    className="cursor-pointer rounded-[12px] border-[1.5px] px-3 py-2 text-[13px] font-semibold"
-                    style={{
-                      background: selected ? 'var(--seg-on)' : 'var(--seg)',
-                      borderColor: selected ? 'var(--seg-on)' : 'var(--color-inputline)',
-                      color: selected ? 'var(--seg-fg-on)' : 'var(--seg-fg)',
-                    }}
+                    className="flex items-center gap-3 rounded-[12px] border-[1.5px] bg-card px-3 py-[9px]"
+                    style={{ borderColor: active ? 'var(--seg-on)' : 'var(--color-inputline)' }}
                   >
-                    {p.name} · {formatTL(numericStringToKurus(String(p.tutar)))}
-                  </button>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-[13px] font-semibold text-ink">{p.name}</div>
+                      <div className="text-[11px] font-medium text-faint">
+                        {formatTL(numericStringToKurus(String(p.tutar)))}
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-[10px]">
+                      <span className="w-6 text-center text-[15px] font-bold tabular-nums text-ink">
+                        {adet}
+                      </span>
+                      <div className="flex flex-col gap-[3px]">
+                        <StepArrow
+                          dir="up"
+                          disabled={adet >= PRIM_ADET_MAX}
+                          onClick={() => setPrimAdet(p.id, adet + 1)}
+                        />
+                        <StepArrow
+                          dir="down"
+                          disabled={adet === 0}
+                          onClick={() => setPrimAdet(p.id, adet - 1)}
+                        />
+                      </div>
+                    </div>
+                  </div>
                 )
               })}
             </div>
@@ -833,11 +902,11 @@ export default function PersonelDetay() {
         <div>
           <div className={modalFieldLabel}>TUTAR (₺)</div>
           {primPaketMode ? (
-            // Paket seçiliyken tutar otomatik = paketlerin toplamı (salt okunur)
+            // Paket seçiliyken tutar otomatik = Σ(paket tutarı × adet) (salt okunur)
             <div className={`${modalInputCls} flex items-center justify-between`}>
               <span className="font-bold text-ink">{formatTL(primPaketToplamKurus)}</span>
               <span className="text-[11px] font-semibold text-faint">
-                {primSelected.length} paket
+                {primToplamAdet} adet
               </span>
             </div>
           ) : (

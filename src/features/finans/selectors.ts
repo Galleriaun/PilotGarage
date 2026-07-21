@@ -102,6 +102,35 @@ export function onayaGeriGonderilebilir(i: Islem): boolean {
 }
 
 /**
+ * "İşleme tıkla → oluşturulduğu yere git" (TxCard). Bir işlemin kaynağına göre
+ * gideceği rota; **belirsiz/olmayan köken için null** döner (kart tıklanamaz) —
+ * böylece tıklama asla YANLIŞ bir yere götürmez:
+ *   • KAYIT        → /kayit/:kayit_id            (kayıt silinmişse null)
+ *   • CARI_HESAP   → /yonetim/isletmeler/:id     (işletme silinmişse null)
+ *   • PERSONEL     → /yonetim/personel/:id        (avans/prim/maaş → personel)
+ *   • SABIT_GIDER  → /yonetim/sabit-giderler      (tanımın yönetildiği liste)
+ *   • tekrar kuralı (MANUEL + tekrar_kural_id) → /yonetim/sabit-giderler
+ *   • düz MANUEL / TRANSFER / komisyon çocuğu → null (kendine ait köken ekranı yok)
+ */
+export function islemOrigin(i: Islem): string | null {
+  switch (i.kaynak) {
+    case 'KAYIT':
+      return i.kayit_id ? `/kayit/${i.kayit_id}` : null
+    case 'CARI_HESAP':
+      return i.cari_hareket ? `/yonetim/isletmeler/${i.cari_hareket.cari_isletme_id}` : null
+    case 'PERSONEL': {
+      const pid = i.personel_odeme[0]?.profile_id
+      return pid ? `/yonetim/personel/${pid}` : null
+    }
+    case 'SABIT_GIDER':
+      return '/yonetim/sabit-giderler'
+    default:
+      // MANUEL: yalnızca tekrar kuralından doğmuşsa yönet (kural Sabit Giderler'de)
+      return i.tekrar_kural_id ? '/yonetim/sabit-giderler' : null
+  }
+}
+
+/**
  * Integer-kuruş sum of approved işlemler of one type within a range.
  * Transfer bacakları varsayılan olarak HARİÇ (ciro/gider toplamları); kova
  * matematiği için `{ transferDahil: true }` ile çağrılır.

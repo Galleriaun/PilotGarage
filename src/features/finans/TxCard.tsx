@@ -118,17 +118,21 @@ function UndoSmallIcon() {
 
 /** Transaction row — white variant on Yönetim, gray on Tüm İşlemler.
  *  `onDelete` adds a trash button (finance screens); `onOnayaGonder`
- *  adds the Yönetici-only "onaya geri gönder" undo button (040). */
+ *  adds the Yönetici-only "onaya geri gönder" undo button (040).
+ *  `onOpen` (varsa) kartı tıklanabilir yapar: işlemin oluşturulduğu yere gider
+ *  (kayıt/işletme/personel/sabit gider). Aksiyon butonları tıklamayı yutmaz. */
 export default function TxCard({
   islem,
   variant,
   onDelete,
   onOnayaGonder,
+  onOpen,
 }: {
   islem: Islem
   variant: 'white' | 'gray'
   onDelete?: () => void
   onOnayaGonder?: () => void
+  onOpen?: () => void
 }) {
   // Transfer (041): ne gelir ne gider — nötr renk, işaretsiz tutar ve
   // "kaynak → hedef" çift çipi. Yön ana bacağın yönteminden türetilir:
@@ -136,12 +140,31 @@ export default function TxCard({
   const transfer = islem.kaynak === 'TRANSFER'
   const kaynakYontem: OdemeYontemi = islem.odeme_yontemi ?? 'NAKIT'
   const hedefYontem: OdemeYontemi = kaynakYontem === 'NAKIT' ? 'KREDI_KARTI' : 'NAKIT'
+  const base =
+    variant === 'white'
+      ? 'flex items-center gap-3 rounded-[16px] bg-white px-4 py-[14px] shadow-[0_1px_2px_rgba(0,0,0,0.03),0_4px_10px_rgba(0,0,0,0.04)] md:border md:border-[#E4E4E7]'
+      : 'flex items-center gap-3 rounded-[16px] bg-card px-4 py-[14px]'
   return (
     <div
-      className={
-        variant === 'white'
-          ? 'flex items-center gap-3 rounded-[16px] bg-white px-4 py-[14px] shadow-[0_1px_2px_rgba(0,0,0,0.03),0_4px_10px_rgba(0,0,0,0.04)] md:border md:border-[#E4E4E7]'
-          : 'flex items-center gap-3 rounded-[16px] bg-card px-4 py-[14px]'
+      className={onOpen ? `${base} cursor-pointer` : base}
+      role={onOpen ? 'button' : undefined}
+      tabIndex={onOpen ? 0 : undefined}
+      onClick={onOpen}
+      onKeyDown={
+        onOpen
+          ? (e) => {
+              // yalnızca kartın kendisi odaktayken: iç butonlardan (sil / onaya
+              // geri) kabarcıklanan Enter/Space kartı tetikleyip navigasyon +
+              // buton eylemini birden yürütmesin
+              if (
+                e.target === e.currentTarget &&
+                (e.key === 'Enter' || e.key === ' ')
+              ) {
+                e.preventDefault()
+                onOpen()
+              }
+            }
+          : undefined
       }
     >
       <div className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-[11px] bg-field">
@@ -197,7 +220,10 @@ export default function TxCard({
       {onOnayaGonder && (
         <button
           type="button"
-          onClick={onOnayaGonder}
+          onClick={(e) => {
+            e.stopPropagation() // kart tıklamasını (onOpen) tetikleme
+            onOnayaGonder()
+          }}
           aria-label="Onaya geri gönder"
           className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-[9px] bg-field"
         >
@@ -207,7 +233,10 @@ export default function TxCard({
       {onDelete && (
         <button
           type="button"
-          onClick={onDelete}
+          onClick={(e) => {
+            e.stopPropagation() // kart tıklamasını (onOpen) tetikleme
+            onDelete()
+          }}
           aria-label="İşlemi sil"
           className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-[9px] bg-danger-soft"
         >
