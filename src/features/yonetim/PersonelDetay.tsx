@@ -11,10 +11,14 @@ import {
   TR_MONTHS_FULL,
 } from '../../lib/dates'
 import { formatTL, numericStringToKurus, parseTLToKurus } from '../../lib/money'
-import type { Role } from '../../lib/types'
+import type { OdemeYontemi, Role } from '../../lib/types'
+import { rpcErrorText } from '../../lib/errors'
+import { ODEME_YONTEMI_LABELS } from '../finans/types'
 import { BackChevron } from '../auth/EyeIcon'
 import {
   useAktifIzinProfilleri,
+  useCeptenGeriOde,
+  useCeptenToplam,
   useGiveAvans,
   useGivePrim,
   useMember,
@@ -229,6 +233,8 @@ export default function PersonelDetay() {
   const { data: member, isPending, isError } = useMember(id, businessId)
   const { data: odemeler = [] } = usePersonelOdemeler(id, businessId)
   const { data: primPaketler = [] } = usePrimPaketleri(businessId)
+  // 052: işletmenin bu kişiye cepten ödeme borcu ("Verilecek")
+  const { data: ceptenKurus = 0 } = useCeptenToplam(id, businessId)
   const { data: savedBusinessIds = [] } = useMemberBusinessIds(id, isYonetici)
   // 048: bugün izindeyse başlıkta turuncu "İzinde" rozeti
   const { data: izindekiler = new Set<string>() } = useAktifIzinProfilleri(businessId)
@@ -240,6 +246,7 @@ export default function PersonelDetay() {
   const givePrim = useGivePrim()
   const payMaas = usePayMaas()
   const setStatus = useSetStatus()
+  const ceptenGeriOde = useCeptenGeriOde()
 
   const [draft, setDraft] = useState<Partial<Draft>>({})
   const [editOpen, setEditOpen] = useState(false)
@@ -258,6 +265,13 @@ export default function PersonelDetay() {
     note: string
     paketAdet: Record<string, number>
   }>({ open: false, tutar: '', note: '', paketAdet: {} })
+  // Cepten ödeme borcunu geri öde (053): tutar + ödeme tipi (+ opsiyonel açıklama)
+  const [odeModal, setOdeModal] = useState<{
+    open: boolean
+    tutar: string
+    note: string
+    yontem: OdemeYontemi | null
+  }>({ open: false, tutar: '', note: '', yontem: null })
   const [confirmMaas, setConfirmMaas] = useState(false)
   const [confirmStatus, setConfirmStatus] = useState(false)
   const [error, setError] = useState('')
@@ -415,6 +429,36 @@ export default function PersonelDetay() {
     }
   }
 
+  /** Borcu geri öde (053): kasadan seçilen yöntemle GİDER çıkar, borç azalır. */
+  async function onCeptenGeriOde() {
+    setError('')
+    const kurus = parseTLToKurus(odeModal.tutar)
+    if (kurus === null || kurus <= 0) {
+      setError('Geçerli bir tutar girin.')
+      return
+    }
+    if (kurus > ceptenKurus) {
+      setError(`Borçtan fazlası ödenemez (kalan: ${formatTL(ceptenKurus)}).`)
+      return
+    }
+    if (!odeModal.yontem) {
+      setError('Ödeme tipi seçin.')
+      return
+    }
+    try {
+      await ceptenGeriOde.mutateAsync({
+        businessId,
+        yoneticiId: id,
+        kurus,
+        yontem: odeModal.yontem,
+        aciklama: odeModal.note.trim(),
+      })
+      setOdeModal({ open: false, tutar: '', note: '', yontem: null })
+    } catch (e) {
+      setError(rpcErrorText(e, 'Ödeme yapılamadı. Tekrar deneyin.'))
+    }
+  }
+
   async function onGiveAvans() {
     setError('')
     const kurus = parseTLToKurus(avansModal.tutar)
@@ -540,6 +584,28 @@ export default function PersonelDetay() {
           {cyclePrimKurus > 0 && (
             <div className="mt-[2px] text-[13px] font-bold text-success">
               +{formatTL(cyclePrimKurus)} prim
+            </div>
+          )}
+          {/* Cepten Ödeme (052): işletmenin bu yöneticiye borcu. Dönemden
+              bağımsız — ödenene kadar durur. Yanındaki Öde borcu kapatır (053). */}
+          {ceptenKurus > 0 && (
+            <div className="mt-[3px] flex items-center gap-2">
+              <span className="text-[13px] font-bold" style={{ color: '#2A5BD7' }}>
+                Verilecek {formatTL(ceptenKurus)}
+              </span>
+              {isYonetici && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setError('')
+                    setOdeModal({ open: true, tutar: '', note: '', yontem: null })
+                  }}
+                  className="cursor-pointer rounded-[8px] px-[10px] py-[3px] text-[11.5px] font-bold text-white"
+                  style={{ background: '#2A5BD7' }}
+                >
+                  Öde
+                </button>
+              )}
             </div>
           )}
           <div className="mt-1 text-xs text-muted">
@@ -934,6 +1000,64 @@ export default function PersonelDetay() {
             />
           </div>
         )}
+      </FormModal>
+
+      {/* Cepten ödeme borcunu geri öde (053) */}
+      <FormModal
+        open={odeModal.open}
+        title="Borcu Öde"
+        error={error}
+        busy={ceptenGeriOde.isPending}
+        confirmLabel="Öde"
+        onConfirm={() => void onCeptenGeriOde()}
+        onClose={() => setOdeModal({ open: false, tutar: '', note: '', yontem: null })}
+      >
+        <div className="rounded-[12px] bg-card px-[14px] py-[11px] text-[13px] font-semibold text-ink">
+          Kalan borç: {formatTL(ceptenKurus)}
+        </div>
+        <div>
+          <div className={modalFieldLabel}>TUTAR (₺)</div>
+          <input
+            type="text"
+            inputMode="decimal"
+            placeholder="0"
+            value={odeModal.tutar}
+            onChange={(e) => setOdeModal((m) => ({ ...m, tutar: e.target.value }))}
+            className={modalInputCls}
+          />
+        </div>
+        <div>
+          <div className={modalFieldLabel}>ÖDEME TİPİ</div>
+          <div className="flex gap-2">
+            {(['NAKIT', 'KREDI_KARTI', 'HAVALE'] as const).map((y) => {
+              const selected = odeModal.yontem === y
+              return (
+                <button
+                  key={y}
+                  type="button"
+                  onClick={() => setOdeModal((m) => ({ ...m, yontem: y }))}
+                  className="flex-1 cursor-pointer rounded-[10px] border-[1.5px] py-2 text-center text-xs font-semibold"
+                  style={{
+                    background: selected ? 'var(--seg-on)' : 'var(--seg)',
+                    borderColor: selected ? 'var(--seg-on)' : 'var(--color-inputline)',
+                    color: selected ? 'var(--seg-fg-on)' : 'var(--seg-fg)',
+                  }}
+                >
+                  {ODEME_YONTEMI_LABELS[y]}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+        <div>
+          <div className={modalFieldLabel}>AÇIKLAMA</div>
+          <input
+            type="text"
+            value={odeModal.note}
+            onChange={(e) => setOdeModal((m) => ({ ...m, note: e.target.value }))}
+            className={modalInputCls}
+          />
+        </div>
       </FormModal>
 
       {/* Maaş öde onayı */}

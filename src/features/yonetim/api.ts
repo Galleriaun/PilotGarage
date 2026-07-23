@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
 import { istanbulTodayISO, nextOccurrenceAfterISO } from '../../lib/dates'
-import { kurusToNumericString } from '../../lib/money'
-import type { Profile, Role } from '../../lib/types'
+import { kurusToNumericString, numericStringToKurus } from '../../lib/money'
+import type { OdemeYontemi, Profile, Role } from '../../lib/types'
 import type { IslemTur } from '../finans/types'
 import type { CariIsletme, Istek, IstekTur, Izin, Member, PersonelOdeme, PrimPaket } from './types'
 
@@ -208,6 +208,66 @@ export function usePersonelOdemeler(profileId: string, businessId: string) {
       return data as PersonelOdeme[]
     },
     enabled: profileId !== '' && businessId !== '',
+  })
+}
+
+/**
+ * Cepten Ödeme borcu (052/053): işletmenin bu yöneticiye kalan borcu
+ * ("Verilecek"), integer kuruş.
+ *
+ *   borç = Σ(CEPTEN GELİR) − Σ(CEPTEN GİDER)
+ *
+ * GELİR = cepten ödeme (borç doğar), GİDER = geri ödeme (borç azalır) — RPC
+ * borçtan fazlasını yazdırmaz, yani sonuç asla eksiye düşmez. Dönem filtresi
+ * YOK: borç ödenene kadar durur. Türetilmiş değerdir — bir işlem silinirse
+ * toplam kendiliğinden düzelir.
+ */
+export function useCeptenToplam(profileId: string, businessId: string) {
+  return useQuery({
+    queryKey: ['cepten-toplam', profileId, businessId],
+    queryFn: async (): Promise<number> => {
+      const { data, error } = await supabase
+        .from('islemler')
+        .select('tur, tutar')
+        .eq('business_id', businessId)
+        .eq('cepten_yonetici_id', profileId)
+        .eq('durum', 'ONAYLANDI')
+      if (error) throw error
+      return (data as { tur: IslemTur; tutar: number | string }[]).reduce(
+        (sum, r) =>
+          sum + (r.tur === 'GELIR' ? 1 : -1) * numericStringToKurus(String(r.tutar)),
+        0,
+      )
+    },
+    enabled: profileId !== '' && businessId !== '',
+  })
+}
+
+/** Cepten ödeme borcunu geri öde (053, Yönetici-only): kasadan seçilen
+ *  yöntemle GİDER çıkar, borç o kadar azalır. RPC borçtan fazlasını reddeder. */
+export function useCeptenGeriOde() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (input: {
+      businessId: string
+      yoneticiId: string
+      kurus: number
+      yontem: OdemeYontemi
+      aciklama: string
+    }) => {
+      const { error } = await supabase.rpc('cepten_geri_ode', {
+        p_business: input.businessId,
+        p_yonetici: input.yoneticiId,
+        p_tutar: kurusToNumericString(input.kurus),
+        p_yontem: input.yontem,
+        p_aciklama: input.aciklama,
+      })
+      if (error) throw error
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['cepten-toplam'] })
+      void queryClient.invalidateQueries({ queryKey: ['islemler'] })
+    },
   })
 }
 

@@ -94,6 +94,7 @@ export function isTransferEs(i: Islem): boolean {
 export function onayaGeriGonderilebilir(i: Islem): boolean {
   return (
     !isTransfer(i) &&
+    i.kaynak !== 'CEPTEN' && // 052: born-ONAYLANDI, Onay'a hiç düşmez
     i.komisyon_of == null &&
     i.kaynak !== 'PERSONEL' &&
     i.sabit_gider_id == null &&
@@ -122,6 +123,9 @@ export function islemOrigin(i: Islem): string | null {
       const pid = i.personel_odeme[0]?.profile_id
       return pid ? `/yonetim/personel/${pid}` : null
     }
+    case 'CEPTEN':
+      // 052: borç kimdeyse oraya — "Verilecek" o ekranda görünür
+      return i.cepten_yonetici_id ? `/yonetim/personel/${i.cepten_yonetici_id}` : null
     case 'SABIT_GIDER':
       return '/yonetim/sabit-giderler'
     default:

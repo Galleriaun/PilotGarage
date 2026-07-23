@@ -303,6 +303,33 @@ export function useTransferGeriAl() {
   })
 }
 
+/** Cepten Ödeme (052, Yönetici-only): yöneticinin cebinden ödediği gideri
+ *  telafi eden NAKİT gelirini born-ONAYLANDI yazar ve o yöneticiye olan borcu
+ *  ("verilecek") kaydeder. Onay'a düşmez. */
+export function useCeptenOdeme() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (input: {
+      businessId: string
+      yoneticiId: string
+      kurus: number
+      aciklama: string
+    }) => {
+      const { error } = await supabase.rpc('cepten_odeme', {
+        p_business: input.businessId,
+        p_yonetici: input.yoneticiId,
+        p_tutar: kurusToNumericString(input.kurus),
+        p_aciklama: input.aciklama,
+      })
+      if (error) throw error
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['islemler'] })
+      void queryClient.invalidateQueries({ queryKey: ['cepten-toplam'] }) // Personel Detay "Verilecek"
+    },
+  })
+}
+
 /** Yönetici-only (040): onaylanmış işlemi tekrar Onay kuyruğuna döndürür.
  *  Kasadan çıkar; bağlı KK komisyonu silinir (yeniden onayda tekrar doğar);
  *  cari hareket YANSIDI → BEKLIYOR'a döner. */

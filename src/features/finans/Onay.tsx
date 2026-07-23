@@ -49,6 +49,8 @@ const SOURCE_META: Record<IslemKaynak, { label: string; bg: string; color: strin
   // Transfer born-ONAYLANDI doğar, Onay ekranına hiç düşmez — map'in
   // eksiksiz kalması için burada (041)
   TRANSFER: { label: 'Aktarım', bg: '#F2F2F2', color: '#555555' },
+  // Cepten ödeme de born-ONAYLANDI (052) — Onay'a düşmez, map tam kalsın
+  CEPTEN: { label: 'Cepten', bg: '#EEF4FF', color: '#2A5BD7' },
 }
 
 const YONTEM_CHIP: Record<OdemeYontemi, { label: string; bg: string; color: string }> = {

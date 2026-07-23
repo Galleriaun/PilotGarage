@@ -5,7 +5,7 @@
 -- Everything happens inside one transaction that is ROLLED BACK at the
 -- end — no test data survives, safe to run on the live project.
 --
--- Prerequisite: migrations 001–051 applied. (Checks were written against
+-- Prerequisite: migrations 001–053 applied. (Checks were written against
 -- 001–013; the later migrations keep every asserted behavior — decided-row
 -- immutability now has RPC-only escape hatches that this file does not
 -- exercise, so all checks still pass unchanged.)
@@ -1541,6 +1541,160 @@ begin
   end if;
   perform pg_temp.logout();
   raise notice 'PASS 33: kaydı tekrar onaya gönder — Yönetici-only, BEKLIYOR NO-OP, red→yeni, onaylı→red (051)';
+
+  -- ═══ 34) 052: Cepten Ödeme — Yönetici-only, nakit GELİR, borç izlenir ═══
+  -- Yöneticinin cebinden ödediği gider telafi edilir: born-ONAYLANDI NAKİT
+  -- GELİR (kasa bakiyesi + nakit kovası yükselir), hedef mutlaka Yönetici,
+  -- Muhasebe çağıramaz, Onay'a düşmez ve onaya geri gönderilemez.
+  --
+  -- Fixture notu: bu dosyada u_yonetici'ye bilerek business_members satırı
+  -- verilmemişti (erişim is_yonetici()'den geliyor). ÜRETİMDE 010 Yöneticiye
+  -- her iki işletmede üyelik satırı açar ve cepten_odeme (give_avans/give_prim
+  -- ile aynı desen) üyelik arar — "Verilecek" zaten Personel Detay'da görünür,
+  -- o ekran da üyelik satırına dayanır. Satırı BURADA açıyoruz: PASS 34 en son
+  -- test olduğu için önceki hiçbir sayımı etkilemez.
+  insert into business_members (profile_id, business_id)
+  values (u_yonetici, v_servis)
+  on conflict do nothing;
+
+  select bakiye into gelir_before from v_kasa_ozet where business_id = v_servis;
+
+  -- Muhasebe çağıramaz (Onay gate'i Muhasebe için delinmesin)
+  perform pg_temp.login(u_muhasebe);
+  begin
+    perform cepten_odeme(v_servis, u_yonetici, 100.00, 'Yetkisiz');
+    raise exception 'FAIL: Muhasebe cepten ödeme yapabildi (052)';
+  exception when others then
+    if sqlerrm like 'FAIL:%' then raise; end if; -- expected: yalnızca Yönetici
+  end;
+  perform pg_temp.logout();
+
+  perform pg_temp.login(u_yonetici);
+  -- hedef Yönetici olmalı: personel hedefe yazılamaz
+  begin
+    perform cepten_odeme(v_servis, u_personel, 100.00, 'Personel hedef');
+    raise exception 'FAIL: cepten ödeme personel adına kaydedilebildi (052)';
+  exception when others then
+    if sqlerrm like 'FAIL:%' then raise; end if; -- expected: yalnızca yönetici adına
+  end;
+
+  select cepten_odeme(v_servis, u_yonetici, 1150.00, 'Yedek parça') into v_islem_c1;
+  select tur::text || '/' || durum::text || '/' || kaynak::text || '/' || odeme_yontemi::text
+    into v_durum from islemler where id = v_islem_c1;
+  if v_durum <> 'GELIR/ONAYLANDI/CEPTEN/NAKIT' then
+    raise exception 'FAIL: cepten ödeme GELIR/ONAYLANDI/CEPTEN/NAKIT olmalı, got %', v_durum;
+  end if;
+  -- açıklama işleme yazılır (baslik'ten türer)
+  select baslik into v_durum from islemler where id = v_islem_c1;
+  if v_durum not like '%Yedek parça' then
+    raise exception 'FAIL: cepten ödeme açıklaması başlıkta yok (052): %', v_durum;
+  end if;
+  -- borç doğru yöneticiye bağlanır ("Verilecek" bundan türer)
+  select count(*) into n from islemler
+  where id = v_islem_c1 and cepten_yonetici_id = u_yonetici;
+  if n <> 1 then raise exception 'FAIL: cepten ödeme yöneticiye bağlanmadı (052)'; end if;
+
+  -- kasa: TRANSFER gibi DIŞLANMAZ — bakiye tam tutar kadar yükselmeli
+  select bakiye into gelir_after from v_kasa_ozet where business_id = v_servis;
+  if gelir_after <> gelir_before + 1150.00 then
+    raise exception 'FAIL: cepten ödeme kasayı 1150.00 yükseltmeliydi (% -> %)',
+      gelir_before, gelir_after;
+  end if;
+
+  -- Onay kuyruğuna düşmez
+  select count(*) into n from islemler
+  where id = v_islem_c1 and durum = 'BEKLIYOR';
+  if n <> 0 then raise exception 'FAIL: cepten ödeme Onay kuyruğuna düştü (052)'; end if;
+
+  -- onaya geri gönderilemez (Onay'dan hiç geçmedi — 049/052)
+  begin
+    perform islem_onaya_geri_gonder(v_islem_c1);
+    raise exception 'FAIL: cepten ödeme onaya geri gönderilebildi (052)';
+  exception when others then
+    if sqlerrm like 'FAIL:%' then raise; end if; -- expected: Onay'dan geçmez
+  end;
+  perform pg_temp.logout();
+  raise notice 'PASS 34: cepten ödeme — Yönetici-only, nakit GELİR, kasaya işler, onaya geri gönderilemez (052)';
+
+  -- ═══ 35) 053: Cepten borcunu geri öde — borçtan fazlası ödenemez ═══
+  -- Geri ödeme kasadan seçilen yöntemle GİDER çıkarır ve borcu azaltır:
+  --   borç = Σ(CEPTEN GELİR) − Σ(CEPTEN GİDER)
+  -- PASS 34'ten devir: u_yonetici'ye 1150.00 borç, kasa = gelir_before + 1150.
+
+  perform pg_temp.login(u_muhasebe);
+  begin
+    perform cepten_geri_ode(v_servis, u_yonetici, 100.00, 'NAKIT', 'Yetkisiz');
+    raise exception 'FAIL: Muhasebe cepten borcunu geri ödeyebildi (053)';
+  exception when others then
+    if sqlerrm like 'FAIL:%' then raise; end if; -- expected: yalnızca Yönetici
+  end;
+  perform pg_temp.logout();
+
+  perform pg_temp.login(u_yonetici);
+  -- borçtan fazlası reddedilir (borç 1150)
+  begin
+    perform cepten_geri_ode(v_servis, u_yonetici, 2000.00, 'NAKIT', 'Fazla');
+    raise exception 'FAIL: borçtan fazlası ödenebildi (053)';
+  exception when others then
+    if sqlerrm like 'FAIL:%' then raise; end if; -- expected: borç aşılamaz
+  end;
+
+  -- kısmi geri ödeme 400 → GİDER; kasa düşer, borç 750'ye iner
+  select cepten_geri_ode(v_servis, u_yonetici, 400.00, 'NAKIT', 'Kısmi iade')
+    into v_islem_c2;
+  select tur::text || '/' || durum::text || '/' || kaynak::text || '/' || odeme_yontemi::text
+    into v_durum from islemler where id = v_islem_c2;
+  if v_durum <> 'GIDER/ONAYLANDI/CEPTEN/NAKIT' then
+    raise exception 'FAIL: geri ödeme GIDER/ONAYLANDI/CEPTEN/NAKIT olmalı, got %', v_durum;
+  end if;
+  select bakiye into gelir_after from v_kasa_ozet where business_id = v_servis;
+  if gelir_after <> gelir_before + 750.00 then
+    raise exception 'FAIL: geri ödeme sonrası kasa gelir_before+750 olmalı (% -> %)',
+      gelir_before, gelir_after;
+  end if;
+
+  select coalesce(sum(case when tur = 'GELIR' then tutar else -tutar end), 0)
+    into gider_before
+  from islemler
+  where business_id = v_servis and cepten_yonetici_id = u_yonetici
+    and durum = 'ONAYLANDI' and kaynak::text = 'CEPTEN';
+  if gider_before <> 750.00 then
+    raise exception 'FAIL: kalan borç 750.00 olmalı, got %', gider_before;
+  end if;
+
+  -- kalanı 1 kuruş bile aşan tutar da reddedilir
+  begin
+    perform cepten_geri_ode(v_servis, u_yonetici, 751.00, 'HAVALE', 'Fazla');
+    raise exception 'FAIL: kalan borcu aşan tutar ödenebildi (053)';
+  exception when others then
+    if sqlerrm like 'FAIL:%' then raise; end if;
+  end;
+
+  -- kalanın tamamı → borç kapanır, kasa başlangıca döner (net = gerçek masraf)
+  perform cepten_geri_ode(v_servis, u_yonetici, 750.00, 'HAVALE', 'Kalan iade');
+  select coalesce(sum(case when tur = 'GELIR' then tutar else -tutar end), 0)
+    into gider_before
+  from islemler
+  where business_id = v_servis and cepten_yonetici_id = u_yonetici
+    and durum = 'ONAYLANDI' and kaynak::text = 'CEPTEN';
+  if gider_before <> 0 then
+    raise exception 'FAIL: borç kapanmalıydı, kalan %', gider_before;
+  end if;
+  select bakiye into gelir_after from v_kasa_ozet where business_id = v_servis;
+  if gelir_after <> gelir_before then
+    raise exception 'FAIL: borç kapanınca kasa başlangıca dönmeliydi (% -> %)',
+      gelir_before, gelir_after;
+  end if;
+
+  -- borç yokken geri ödeme reddedilir (borç eksiye düşemez)
+  begin
+    perform cepten_geri_ode(v_servis, u_yonetici, 10.00, 'NAKIT', 'Borç yok');
+    raise exception 'FAIL: borç yokken geri ödeme yapılabildi (053)';
+  exception when others then
+    if sqlerrm like 'FAIL:%' then raise; end if;
+  end;
+  perform pg_temp.logout();
+  raise notice 'PASS 35: cepten borcu geri ödeme — GİDER, borçtan fazlası red, borç kapanır (053)';
 
   raise notice '';
   raise notice '=== ALL TESTS PASSED (rolling back — no test data persists) ===';

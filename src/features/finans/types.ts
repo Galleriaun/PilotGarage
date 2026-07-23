@@ -10,6 +10,9 @@ export type IslemKaynak =
   | 'PERSONEL'
   /** Hesaba Para Aktarımı bacağı (041) — iç aktarım, ciro/gidere sayılmaz. */
   | 'TRANSFER'
+  /** Cepten Ödeme (052): yöneticinin kendi cebinden ödediği gideri telafi eden
+   *  NAKİT geliri. Ciro'dan DIŞLANMAZ (bakiye doğru kalsın). */
+  | 'CEPTEN'
 export type TekrarSiklik = 'HAFTALIK' | 'AYLIK' | 'YILLIK'
 
 export interface Kategori {
@@ -40,6 +43,9 @@ export interface Islem {
   kayit_id: string | null
   /** CARI_HESAP işlem with NULL here = its işletme was deleted (015). */
   cari_hareket_id: string | null
+  /** CEPTEN (052): gideri kendi cebinden ödeyen yönetici — borç ("verilecek")
+   *  bu kişiye aittir. Profil silinmişse NULL. */
+  cepten_yonetici_id: string | null
   /** Non-null = this row IS a KK komisyon gideri linked to its parent (039). */
   komisyon_of: string | null
   /** Non-null = transferin EŞ bacağı (KK girişi); listede gizlenir (041). */

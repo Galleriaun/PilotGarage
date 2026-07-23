@@ -9,6 +9,7 @@ import { GearIcon, SwapIcon } from '../kayit/icons'
 import { BellButton, TrashHeaderButton } from '../settings/HeaderButtons'
 import FinansMenu from '../yonetim/FinansMenu'
 import AddTxModal from './AddTxModal'
+import CeptenOdemeModal from './CeptenOdemeModal'
 import TransferModal from './TransferModal'
 import TxCard from './TxCard'
 import {
@@ -118,6 +119,7 @@ export default function Yonetim() {
   const [widgetIndex, setWidgetIndex] = useState(0)
   const [addTx, setAddTx] = useState<IslemTur | null>(null)
   const [transferOpen, setTransferOpen] = useState(false)
+  const [ceptenOpen, setCeptenOpen] = useState(false)
 
   const today = istanbulTodayISO()
   const currentYear = Number(today.slice(0, 4))
@@ -210,29 +212,41 @@ export default function Yonetim() {
               <div className="shrink-0 text-xs font-semibold tracking-[0.4px] text-white/50">
                 TOPLAM BAKİYE
               </div>
-              {delta !== null && (
-                <div
-                  className="flex min-w-0 items-center gap-1 rounded-[20px] px-[9px] py-1"
-                  style={{
-                    background: delta >= 0 ? 'rgba(127,199,154,0.16)' : 'rgba(248,113,113,0.16)',
-                  }}
-                >
-                  {delta >= 0 ? (
-                    <ArrowUpMini color="#7FC79A" />
-                  ) : (
-                    <ArrowDownMini color="#F87171" />
-                  )}
-                  <span
-                    className="truncate whitespace-nowrap font-bold"
+              <div className="flex min-w-0 items-center gap-2">
+                {delta !== null && (
+                  <div
+                    className="flex min-w-0 items-center gap-1 rounded-[20px] px-[9px] py-1"
                     style={{
-                      color: delta >= 0 ? '#7FC79A' : '#F87171',
-                      fontSize: deltaLabel.length > 9 ? '9.5px' : '11px',
+                      background: delta >= 0 ? 'rgba(127,199,154,0.16)' : 'rgba(248,113,113,0.16)',
                     }}
                   >
-                    {deltaLabel}
-                  </span>
-                </div>
-              )}
+                    {delta >= 0 ? (
+                      <ArrowUpMini color="#7FC79A" />
+                    ) : (
+                      <ArrowDownMini color="#F87171" />
+                    )}
+                    <span
+                      className="truncate whitespace-nowrap font-bold"
+                      style={{
+                        color: delta >= 0 ? '#7FC79A' : '#F87171',
+                        fontSize: deltaLabel.length > 9 ? '9.5px' : '11px',
+                      }}
+                    >
+                      {deltaLabel}
+                    </span>
+                  </div>
+                )}
+                {/* Cepten Ödeme (052) — yalnızca Yönetici (RPC de öyle) */}
+                {isYonetici && (
+                  <button
+                    type="button"
+                    onClick={() => setCeptenOpen(true)}
+                    className="pressable shrink-0 cursor-pointer whitespace-nowrap rounded-[20px] bg-white/10 px-[11px] py-[5px] text-[11.5px] font-semibold text-white/90"
+                  >
+                    Cepten Ödeme
+                  </button>
+                )}
+              </div>
             </div>
             <div
               className="mt-[10px] truncate whitespace-nowrap font-bold tracking-[-1px] text-white"
@@ -496,6 +510,15 @@ export default function Yonetim() {
         nakitKurus={nakitTumu}
         kkKurus={kkTumu}
         onClose={() => setTransferOpen(false)}
+      />
+
+      {/* Cepten Ödeme (052): nakit kovası CANLI yükselir — bakiye gibi dönem
+          filtresinden bağımsız, tüm zamanların nakit bakiyesi kullanılır */}
+      <CeptenOdemeModal
+        open={ceptenOpen}
+        businessId={businessId}
+        nakitKurus={nakitTumu}
+        onClose={() => setCeptenOpen(false)}
       />
     </div>
   )

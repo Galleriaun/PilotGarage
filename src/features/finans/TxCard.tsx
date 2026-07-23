@@ -14,11 +14,12 @@ function YontemChip({ y }: { y: OdemeYontemi }) {
   )
 }
 
-type IconKind = 'car' | 'wrench' | 'building' | 'users' | 'shield' | 'transfer'
+type IconKind = 'car' | 'wrench' | 'building' | 'users' | 'shield' | 'transfer' | 'wallet'
 
 /** Prototype's icon mapping: income -> car; expense by kategori label. */
 function iconKind(islem: Islem): IconKind {
   if (islem.kaynak === 'TRANSFER') return 'transfer'
+  if (islem.kaynak === 'CEPTEN') return 'wallet' // 052: cepten ödeme telafisi
   if (islem.tur === 'GELIR') return 'car'
   switch (islem.kategori?.label) {
     case 'Parça Tedariki':
@@ -88,6 +89,14 @@ export function TxIcon({ kind, color = '#555' }: { kind: IconKind; color?: strin
           <path d="M21 7H8a4 4 0 00-4 4" />
           <polyline points="7 21 3 17 7 13" />
           <path d="M3 17h13a4 4 0 004-4" />
+        </svg>
+      )
+    case 'wallet':
+      return (
+        <svg {...common}>
+          <path d="M3 7a2 2 0 012-2h13a1 1 0 011 1v2" />
+          <path d="M3 7v10a2 2 0 002 2h14a1 1 0 001-1v-3" />
+          <path d="M21 12h-4a2 2 0 000 4h4a1 1 0 001-1v-2a1 1 0 00-1-1z" />
         </svg>
       )
   }
