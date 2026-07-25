@@ -280,9 +280,6 @@ export default function Onay() {
   const [filter, setFilter] = useState<FilterKey>('TUMU')
   const [manuelTur, setManuelTur] = useState<ManuelTur>('TUMU')
 
-  const showBar =
-    filter === 'MANUEL' || filter === 'KAYIT' || filter === 'CARI_HESAP' || filter === 'PERSONEL'
-
   const shownSilme =
     filter === 'TUMU' || filter === 'SILME' ? silmeTalepleri : []
   const shownPending = pending.filter((i) =>
@@ -294,6 +291,12 @@ export default function Onay() {
           ? i.kaynak === 'MANUEL' && (manuelTur === 'TUMU' || i.tur === manuelTur)
           : i.kaynak === filter,
   )
+
+  // Özet çubuğu listedeki işlemleri toplar — Tümü dâhil (onaylanırsa kasaya
+  // ne yansıyacağının net özeti). Kayıt Silme talepleri işlem değildir
+  // (tutarları yok), o filtrede çubuk çıkmaz; toplanacak işlem yoksa da
+  // gizlenir — sıfırlarla dolu çubuk yanıltıcı olurdu.
+  const showBar = filter !== 'SILME' && shownPending.length > 0
 
   function setCardError(id: string, msg: string) {
     setErrors((e) => ({ ...e, [id]: msg }))
