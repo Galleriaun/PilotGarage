@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router'
 import { useBusiness } from '../../app/providers/BusinessProvider'
 import ConfirmDialog from '../../components/ui/ConfirmDialog'
+import { YontemSecici } from '../../components/ui/YontemSecici'
+import type { OdemeYontemi } from '../../lib/types'
 import { formatCreatedStamp } from '../../lib/dates'
 import { formatTL, numericStringToKurus } from '../../lib/money'
 import { BackChevron } from '../auth/EyeIcon'
@@ -12,7 +14,7 @@ import {
   useIstekler,
   useRejectAvansIstek,
 } from './api'
-import { Avatar } from './shared'
+import { Avatar, FormModal, modalFieldLabel } from './shared'
 import { ROLE_LABELS, type Istek, type IstekTur } from './types'
 
 const TABS: { key: IstekTur; label: string }[] = [
@@ -42,6 +44,9 @@ export default function Istekler() {
   const [tab, setTab] = useState<IstekTur>('AVANS')
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [confirm, setConfirm] = useState<ConfirmAction | null>(null)
+  // 056: avans isteğini onaylamak avans OLUŞTURUR → yöntem burada seçilir
+  const [istekYontem, setIstekYontem] = useState<OdemeYontemi | null>(null)
+  const [confirmError, setConfirmError] = useState('')
   const [busyId, setBusyId] = useState<string | null>(null)
   const [errors, setErrors] = useState<Record<string, string>>({})
 
@@ -51,12 +56,19 @@ export default function Istekler() {
   async function onConfirm() {
     if (!confirm) return
     const { istek, action } = confirm
+    // yöntem seçilmeden onaylanamaz — diyalog AÇIK kalır, sunucuya hiç gitmez
+    if (action === 'ONAYLA' && !istekYontem) {
+      setConfirmError('Ödeme yöntemi seçin.')
+      return
+    }
     setConfirm(null)
+    setConfirmError('')
     setErrors((e) => ({ ...e, [istek.id]: '' }))
     setBusyId(istek.id)
     try {
-      if (action === 'ONAYLA') await approve.mutateAsync({ id: istek.id })
-      else if (action === 'REDDET') await reject.mutateAsync({ id: istek.id })
+      if (action === 'ONAYLA') {
+        await approve.mutateAsync({ id: istek.id, yontem: istekYontem as OdemeYontemi })
+      } else if (action === 'REDDET') await reject.mutateAsync({ id: istek.id })
       else await alindi.mutateAsync({ id: istek.id })
     } catch {
       setErrors((e) => ({ ...e, [istek.id]: 'İşlem yapılamadı. Tekrar deneyin.' }))
@@ -228,7 +240,12 @@ export default function Istekler() {
                         <button
                           type="button"
                           disabled={busy || busyId === i.id}
-                          onClick={() => setConfirm({ istek: i, action: 'ONAYLA' })}
+                          onClick={() => {
+                            // her açılışta sıfırla: önceki onayın yöntemi taşınmasın
+                            setIstekYontem(null)
+                            setConfirmError('')
+                            setConfirm({ istek: i, action: 'ONAYLA' })
+                          }}
                           className="flex-1 cursor-pointer rounded-[12px] bg-[#1F2937] py-[11px] text-center text-sm font-semibold text-white disabled:opacity-60"
                         >
                           {busyId === i.id ? '…' : 'Onayla'}
@@ -273,6 +290,23 @@ export default function Istekler() {
         (() => {
           const t = confirmText(confirm)
           return (
+            confirm.action === 'ONAYLA' ? (
+              <FormModal
+                open
+                title={t.title}
+                error={confirmError}
+                busy={busyId !== null}
+                confirmLabel={t.label}
+                onConfirm={() => void onConfirm()}
+                onClose={() => setConfirm(null)}
+              >
+                <p className="text-[13px] leading-relaxed text-muted">{t.message}</p>
+                <div>
+                  <div className={modalFieldLabel}>ÖDEME YÖNTEMİ</div>
+                  <YontemSecici value={istekYontem} onChange={setIstekYontem} />
+                </div>
+              </FormModal>
+            ) : (
             <ConfirmDialog
               open
               title={t.title}
@@ -283,6 +317,7 @@ export default function Istekler() {
               onConfirm={() => void onConfirm()}
               onCancel={() => setConfirm(null)}
             />
+            )
           )
         })()}
     </div>

@@ -1,10 +1,12 @@
-import type { AccountStatus, Role } from '../../lib/types'
+import type { AccountStatus, OdemeYontemi, Role } from '../../lib/types'
 import type { IslemTur } from '../finans/types'
 
 export interface Member {
   profile_id: string
   business_id: string
   maas: number | string
+  /** 054: maaşın kasa kovası (elle + otomatik ödeme). NULL = seçilmemiş */
+  odeme_yontemi: OdemeYontemi | null
   odeme_gunu: number
   profile: {
     id: string
@@ -66,6 +68,8 @@ export interface CariHareket {
   kasa_durumu: 'YOK' | 'BEKLIYOR' | 'YANSIDI'
   /** set when the hareket was materialized from a tekrar rule (011) */
   tekrar_kural_id: string | null
+  /** 054: tahsilatın kovası; yansıtırken işleme kopyalanır. NULL = seçilmemiş */
+  odeme_yontemi: OdemeYontemi | null
   created_at: string
 }
 

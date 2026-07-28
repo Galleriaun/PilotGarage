@@ -77,6 +77,8 @@ export interface SabitGider {
   tutar: number | string
   odeme_gunu: number
   kategori_id: string | null
+  /** 054: kuralın kasa kovası; cron her dönem işleme kopyalar. NULL = seçilmemiş */
+  odeme_yontemi: OdemeYontemi | null
 }
 
 export interface TekrarKural {

@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { useBusiness } from '../../app/providers/BusinessProvider'
 import ConfirmDialog from '../../components/ui/ConfirmDialog'
+import { YontemSecici } from '../../components/ui/YontemSecici'
 import { formatRelativeDate } from '../../lib/dates'
+import type { OdemeYontemi } from '../../lib/types'
 import { formatTL, parseTLToKurus, numericStringToKurus } from '../../lib/money'
 import { ChevronDownIcon } from '../kayit/icons'
 import { useKategoriler, useSabitGiderler, useTekrarKurallari } from '../finans/api'
@@ -31,6 +33,7 @@ interface ModalState {
   tutar: string
   gun: number | null
   kategoriId: string | null
+  yontem: OdemeYontemi | null
 }
 
 const CLOSED: ModalState = {
@@ -40,6 +43,7 @@ const CLOSED: ModalState = {
   tutar: '',
   gun: null,
   kategoriId: null,
+  yontem: null,
 }
 
 const SIKLIK_LABELS: Record<TekrarSiklik, string> = {
@@ -202,6 +206,7 @@ export default function SabitGiderler() {
           kurus,
           odemeGunu: modal.gun,
           kategoriId: modal.kategoriId,
+          yontem: modal.yontem,
         })
       } else {
         await createGider.mutateAsync({
@@ -210,6 +215,7 @@ export default function SabitGiderler() {
           kurus,
           odemeGunu: modal.gun,
           kategoriId: modal.kategoriId,
+          yontem: modal.yontem,
         })
       }
       setModal(CLOSED)
@@ -298,6 +304,7 @@ export default function SabitGiderler() {
                     tutar: String(numericStringToKurus(String(sg.tutar)) / 100),
                     gun: sg.odeme_gunu,
                     kategoriId: sg.kategori_id,
+                    yontem: sg.odeme_yontemi,
                   })
                 }}
                 aria-label="Düzenle"
@@ -361,6 +368,17 @@ export default function SabitGiderler() {
         <div>
           <div className={modalFieldLabel}>ÖDEME GÜNÜ (1-28)</div>
           <GunDropdown value={modal.gun} onChange={(gun) => setModal((m) => ({ ...m, gun }))} />
+        </div>
+        {/* 054: kovayı kural taşır, cron her ay işleme kopyalar. Opsiyonel —
+            mevcut giderler yöntemsiz kaldığı için zorunlu tutulmadı; seçili
+            olana tekrar dokunmak seçimi kaldırır. */}
+        <div>
+          <div className={modalFieldLabel}>ÖDEME YÖNTEMİ — İSTEĞE BAĞLI</div>
+          <YontemSecici
+            value={modal.yontem}
+            onChange={(yontem) => setModal((m) => ({ ...m, yontem }))}
+            allowNull
+          />
         </div>
         {giderKategorileri.length > 0 && (
           <div>

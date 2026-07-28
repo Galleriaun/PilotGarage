@@ -5,7 +5,7 @@
 -- Everything happens inside one transaction that is ROLLED BACK at the
 -- end — no test data survives, safe to run on the live project.
 --
--- Prerequisite: migrations 001–053 applied. (Checks were written against
+-- Prerequisite: migrations 001–056 applied. (Checks were written against
 -- 001–013; the later migrations keep every asserted behavior — decided-row
 -- immutability now has RPC-only escape hatches that this file does not
 -- exercise, so all checks still pass unchanged.)
@@ -100,6 +100,8 @@ declare
   n bigint;
   v_izin uuid;   -- 048 İzinler
   v_izin2 uuid;
+  v_sabit uuid;  -- 054 sabit gider (yöntem kopyalama)
+  v_maas  uuid;  -- 054 born-ONAYLANDI maaş (değişmezlik kontrolü)
   v_durum text;
   gelir_before numeric;
   gider_before numeric;
@@ -685,7 +687,7 @@ begin
     if sqlerrm like 'FAIL:%' then raise; end if; -- expected: update revoked
   end;
   begin
-    perform approve_avans_istek(v_kayit);
+    perform approve_avans_istek(v_kayit, 'NAKIT');
     raise exception 'FAIL: personel kendi avans isteğini onaylayabildi';
   exception when others then
     if sqlerrm like 'FAIL:%' then raise; end if; -- expected: yetkiniz yok
@@ -699,7 +701,7 @@ begin
     raise exception 'FAIL: Muhasebe istekleri görebiliyor (046: yalnızca Yönetici), % satır', n;
   end if;
   begin
-    perform approve_avans_istek(v_kayit);
+    perform approve_avans_istek(v_kayit, 'NAKIT');
     raise exception 'FAIL: Muhasebe avans isteğini onaylayabildi (046)';
   exception when others then
     if sqlerrm like 'FAIL:%' then raise; end if; -- expected: yalnızca Yöneticiye aittir
@@ -713,7 +715,7 @@ begin
   perform pg_temp.logout();
 
   perform pg_temp.login(u_yonetici);
-  select approve_avans_istek(v_kayit) into v_islem_c1;
+  select approve_avans_istek(v_kayit, 'NAKIT') into v_islem_c1;
   select durum::text into v_durum from istekler where id = v_kayit;
   if v_durum <> 'ONAYLANDI' then
     raise exception 'FAIL: avans isteği ONAYLANDI olmadı (%)', v_durum;
@@ -1177,13 +1179,13 @@ begin
   select bakiye into gelir_before from v_kasa_ozet where business_id = v_servis;
 
   perform pg_temp.login(u_muhasebe); -- avans/prim vermek hâlâ finansın
-  select give_avans(u_personel, v_servis, 120.00, 'Onay testi avans') into v_islem_c1;
+  select give_avans(u_personel, v_servis, 120.00, 'Onay testi avans', 'NAKIT') into v_islem_c1;
   select tur::text || '/' || durum::text || '/' || kaynak::text into v_durum
   from islemler where id = v_islem_c1;
   if v_durum <> 'GIDER/BEKLIYOR/PERSONEL' then
     raise exception 'FAIL: avans BEKLIYOR doğmadı (%)', v_durum;
   end if;
-  select give_prim(u_personel, v_servis, 80.00, 'Onay testi prim') into v_islem_c2;
+  select give_prim(u_personel, v_servis, 80.00, 'Onay testi prim', 'NAKIT') into v_islem_c2;
   select durum::text into v_durum from islemler where id = v_islem_c2;
   if v_durum <> 'BEKLIYOR' then
     raise exception 'FAIL: prim BEKLIYOR doğmadı (%)', v_durum;
@@ -1457,12 +1459,12 @@ begin
   if n <> 1 then raise exception 'FAIL: Yönetici prim paketini güncelleyemedi (050)'; end if;
 
   -- give_prim baslik: açıklamadan türer, boşsa "Prim"e düşer
-  select give_prim(u_personel, v_servis, 600.00, 'Bayram Primi 2') into v_islem_c1;
+  select give_prim(u_personel, v_servis, 600.00, 'Bayram Primi 2', 'NAKIT') into v_islem_c1;
   select baslik into v_durum from islemler where id = v_islem_c1;
   if v_durum not like '%Bayram Primi 2' then
     raise exception 'FAIL: give_prim baslik açıklamadan türemedi (050): %', v_durum;
   end if;
-  select give_prim(u_personel, v_servis, 100.00, '') into v_islem_c2;
+  select give_prim(u_personel, v_servis, 100.00, '', 'NAKIT') into v_islem_c2;
   select baslik into v_durum from islemler where id = v_islem_c2;
   if v_durum not like '%Prim' then
     raise exception 'FAIL: give_prim boş notta "Prim"e düşmedi (050): %', v_durum;
@@ -1695,6 +1697,168 @@ begin
   end;
   perform pg_temp.logout();
   raise notice 'PASS 35: cepten borcu geri ödeme — GİDER, borçtan fazlası red, borç kapanır (053)';
+
+
+  -- ═══ 36) 054: ödeme yöntemi her ödeme yolunda ═══
+  -- Kural: yöntem TANIMIN üstünde durur (kişi / sabit gider / hareket) ve
+  -- oradan işleme kopyalanır. Onaylanmış işlemin yöntemini değiştiren bir
+  -- yol YOKTUR — değişmezlik korunur.
+
+  perform pg_temp.login(u_muhasebe);
+
+  -- (a) avans/prim seçilen yöntemle doğar (045: BEKLIYOR)
+  select give_avans(u_personel, v_servis, 50.00, 'Yöntemli avans', 'HAVALE')
+    into v_islem_c1;
+  select durum::text || '/' || coalesce(odeme_yontemi::text, 'NULL')
+    into v_durum from islemler where id = v_islem_c1;
+  if v_durum <> 'BEKLIYOR/HAVALE' then
+    raise exception 'FAIL: avans BEKLIYOR/HAVALE olmalı (054), got %', v_durum;
+  end if;
+
+  -- 056: yöntemsiz avans/prim artık REDDEDİLİR (054'te NULL doğardı)
+  begin
+    perform give_prim(u_personel, v_servis, 25.00, 'Yöntemsiz prim');
+    raise exception 'FAIL: yöntemsiz prim oluşturulabildi (056)';
+  exception when others then
+    if sqlerrm like 'FAIL:%' then raise; end if; -- expected: yöntem zorunlu
+  end;
+  begin
+    perform give_avans(u_personel, v_servis, 25.00, 'Yöntemsiz avans');
+    raise exception 'FAIL: yöntemsiz avans oluşturulabildi (056)';
+  exception when others then
+    if sqlerrm like 'FAIL:%' then raise; end if;
+  end;
+
+  -- (b) maaş kovası KİŞİDEN okunur: update_member_pay yazar, pay_maas kopyalar.
+  -- odeme_gunu = 0 (elle ödeme) → aşağıdaki materializer bu kişiye maaş açmaz.
+  perform update_member_pay(u_personel, v_servis, 3000.00, 0, 'KREDI_KARTI');
+  if (select odeme_yontemi from business_members
+      where profile_id = u_personel and business_id = v_servis) <> 'KREDI_KARTI' then
+    raise exception 'FAIL: business_members.odeme_yontemi yazılmadı (054)';
+  end if;
+  select pay_maas(u_personel, v_servis) into v_maas;
+  select durum::text || '/' || coalesce(odeme_yontemi::text, 'NULL')
+    into v_durum from islemler where id = v_maas;
+  if v_durum <> 'ONAYLANDI/KREDI_KARTI' then
+    raise exception 'FAIL: maaş üyelikteki kovaya düşmedi (054), got %', v_durum;
+  end if;
+
+  -- seçim kaldırılabilir (NULL yazılır) — UI'daki "seçiliye tekrar dokun = kaldır".
+  -- Bu yüzden update_member_pay coalesce KULLANMAZ; yöntemsiz çağrı siler.
+  perform update_member_pay(u_personel, v_servis, 3000.00, 0, null);
+  if (select odeme_yontemi from business_members
+      where profile_id = u_personel and business_id = v_servis) is not null then
+    raise exception 'FAIL: maaş yöntemi temizlenemedi (054)';
+  end if;
+
+  -- (c) cari: yöntem harekette saklanır ve işleme kopyalanır
+  select topla_cari_odeme(v_cari, 40.00, 'Yöntemli tahsilat', 'NAKIT') into v_islem_c2;
+  if (select odeme_yontemi from islemler where id = v_islem_c2) <> 'NAKIT' then
+    raise exception 'FAIL: cari tahsilat işlemi NAKIT olmalı (054)';
+  end if;
+  if (select odeme_yontemi from cari_hareketler
+      where id = (select cari_hareket_id from islemler where id = v_islem_c2)) <> 'NAKIT' then
+    raise exception 'FAIL: cari hareket NAKIT saklamalı (054)';
+  end if;
+
+  -- yansıtma hareketin KENDİ yöntemini taşır → "Tümünü Topla" kovalara ayrışır
+  insert into cari_hareketler
+    (cari_isletme_id, tur, tutar, note, kasa_durumu, odeme_yontemi, created_by)
+  values (v_cari, 'GELIR', 60.00, 'Ayrışma testi', 'YOK', 'HAVALE', u_muhasebe)
+  returning id into v_hareket2;
+  select yansit_cari_hareket(v_hareket2) into v_islem_c1;
+  if (select odeme_yontemi from islemler where id = v_islem_c1) <> 'HAVALE' then
+    raise exception 'FAIL: yansıtma hareketin yöntemini taşımadı (054)';
+  end if;
+  perform pg_temp.logout();
+
+  -- (d) sabit gider: cron ürettiği işleme kuralın yöntemini kopyalar.
+  -- odeme_gunu 1–28 ile SINIRLI (001) ve materializer bugünün gününü eşler —
+  -- ayın 29/30/31'inde hiçbir sabit gider zaten tetiklenemez, o günlerde bu
+  -- adım atlanır (üretimde de aynı davranış).
+  -- NOT: run_daily_materializer canlı veriyi de işler (bugünü gelen maaş/tekrar
+  -- satırları); hepsi bu transaction'da kalır ve sonunda geri alınır.
+  if extract(day from istanbul_today())::int <= 28 then
+    insert into sabit_giderler (business_id, name, tutar, odeme_gunu, odeme_yontemi)
+    values (v_servis, 'Yöntem testi gideri', 77.00,
+            extract(day from istanbul_today())::int, 'HAVALE')
+    returning id into v_sabit;
+    perform run_daily_materializer();
+    select coalesce(odeme_yontemi::text, 'NULL') || '/' || durum::text into v_durum
+    from islemler where sabit_gider_id = v_sabit;
+    if v_durum is distinct from 'HAVALE/ONAYLANDI' then
+      raise exception 'FAIL: sabit gider işlemi HAVALE/ONAYLANDI olmalı (054), got %',
+        coalesce(v_durum, 'işlem üretilmedi');
+    end if;
+  else
+    raise notice '  (36d atlandı: ayın 29+ — sabit gider ödeme günü 1-28 ile sınırlı)';
+  end if;
+
+  -- (e) DEĞİŞMEZLİK KORUNDU: onaylanmış işlemin yöntemi (tablo sahibi olarak
+  -- bile) değiştirilemez — 054 guard'a HİÇBİR istisna eklemedi. (b)'deki
+  -- born-ONAYLANDI maaş satırı üzerinden sınanır, güne bağlı değildir.
+  begin
+    update islemler set odeme_yontemi = 'NAKIT' where id = v_maas;
+    raise exception 'FAIL: onaylanmış işlemin ödeme yöntemi değiştirilebildi (054)';
+  exception when others then
+    if sqlerrm like 'FAIL:%' then raise; end if; -- expected: immutability trigger
+  end;
+
+  raise notice 'PASS 36: ödeme yöntemi — avans/prim seçimi, maaş üyelikten, cari ayrışma, sabit gider kopyası, değişmezlik korunur (054)';
+
+
+  -- ═══ 37) 055: cari tahsilat yöntemi TOPLAMA anında seçilir ═══
+  -- "Borç Ekle" yöntemsiz hareket açar (o an nasıl tahsil edileceği bilinmez);
+  -- yöntem yansıtırken verilir ve HEM işleme HEM harekete yazılır.
+
+  perform pg_temp.login(u_muhasebe);
+
+  -- (a) yöntemsiz borç + toplama anında seçim → işlem o kovaya düşer
+  insert into cari_hareketler
+    (cari_isletme_id, tur, tutar, note, kasa_durumu, created_by)
+  values (v_cari, 'GELIR', 90.00, '055 borç', 'YOK', u_muhasebe)
+  returning id into v_hareket2;
+  if (select odeme_yontemi from cari_hareketler where id = v_hareket2) is not null then
+    raise exception 'FAIL: borç hareketi yöntemsiz açılmalıydı (055)';
+  end if;
+
+  select yansit_cari_hareket(v_hareket2, 'NAKIT') into v_islem_c1;
+  if (select odeme_yontemi from islemler where id = v_islem_c1) <> 'NAKIT' then
+    raise exception 'FAIL: toplama anındaki yöntem işleme yazılmadı (055)';
+  end if;
+  -- hareket de "nasıl tahsil edildi"yi taşır
+  if (select odeme_yontemi from cari_hareketler where id = v_hareket2) <> 'NAKIT' then
+    raise exception 'FAIL: seçilen yöntem harekete yazılmadı (055)';
+  end if;
+
+  -- (b) yöntem verilmezse harekette saklı olana düşülür (054 uyumu korunur)
+  insert into cari_hareketler
+    (cari_isletme_id, tur, tutar, note, kasa_durumu, odeme_yontemi, created_by)
+  values (v_cari, 'GELIR', 30.00, '055 saklı yöntem', 'YOK', 'HAVALE', u_muhasebe)
+  returning id into v_hareket2;
+  select yansit_cari_hareket(v_hareket2) into v_islem_c2;
+  if (select odeme_yontemi from islemler where id = v_islem_c2) <> 'HAVALE' then
+    raise exception 'FAIL: yöntemsiz çağrı harekette saklı yönteme düşmedi (055)';
+  end if;
+
+  -- (c) kasa/Onay davranışı değişmedi: born-BEKLIYOR GELİR + hareket BEKLIYOR
+  select durum::text || '/' || tur::text into v_durum from islemler where id = v_islem_c2;
+  if v_durum <> 'BEKLIYOR/GELIR' then
+    raise exception 'FAIL: yansıtma BEKLIYOR/GELIR üretmeli (055), got %', v_durum;
+  end if;
+  if (select kasa_durumu from cari_hareketler where id = v_hareket2) <> 'BEKLIYOR' then
+    raise exception 'FAIL: hareket BEKLIYOR olmalıydı (055)';
+  end if;
+
+  -- (d) iki kez toplanamaz (032 guard'ı korundu)
+  begin
+    perform yansit_cari_hareket(v_hareket2, 'NAKIT');
+    raise exception 'FAIL: aynı hareket iki kez toplanabildi (055)';
+  exception when others then
+    if sqlerrm like 'FAIL:%' then raise; end if; -- expected: kasa_durumu <> YOK
+  end;
+  perform pg_temp.logout();
+  raise notice 'PASS 37: cari tahsilat yöntemi toplama anında seçilir, harekete de yazılır (055)';
 
   raise notice '';
   raise notice '=== ALL TESTS PASSED (rolling back — no test data persists) ===';

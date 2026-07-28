@@ -2,6 +2,8 @@ import { useState } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 import { useNavigate, useParams } from 'react-router'
 import ConfirmDialog from '../../components/ui/ConfirmDialog'
+import { YontemSecici } from '../../components/ui/YontemSecici'
+import type { OdemeYontemi } from '../../lib/types'
 import { formatTL, numericStringToKurus, parseTLToKurus } from '../../lib/money'
 import { formatRelativeDate } from '../../lib/dates'
 import { BackChevron } from '../auth/EyeIcon'
@@ -73,11 +75,12 @@ export default function IsletmeDetay() {
   const [error, setError] = useState('')
 
   // Genel Ödeme Topla — bakiyeden düşer, kasa geliri olarak Onay'a gider
-  const [odemeModal, setOdemeModal] = useState<{ open: boolean; tutar: string; note: string }>({
-    open: false,
-    tutar: '',
-    note: '',
-  })
+  const [odemeModal, setOdemeModal] = useState<{
+    open: boolean
+    tutar: string
+    note: string
+    yontem: OdemeYontemi | null
+  }>({ open: false, tutar: '', note: '', yontem: null })
   const [odemeError, setOdemeError] = useState('')
   const [yansitError, setYansitError] = useState('')
   const [yansitBusyId, setYansitBusyId] = useState<string | null>(null)
@@ -105,6 +108,9 @@ export default function IsletmeDetay() {
   })
   const [delError, setDelError] = useState('')
 
+  // 055: tahsilat yöntemi toplama anında seçilir (borç eklerken bilinmez)
+  const [yansitYontem, setYansitYontem] = useState<OdemeYontemi | null>(null)
+  const [yansitAllYontem, setYansitAllYontem] = useState<OdemeYontemi | null>(null)
   const [yansitAllOpen, setYansitAllOpen] = useState(false)
   const [yansitAllBusy, setYansitAllBusy] = useState(false)
   const [yansitAllError, setYansitAllError] = useState('')
@@ -205,18 +211,19 @@ export default function IsletmeDetay() {
         cariIsletmeId: id,
         kurus,
         note: odemeModal.note.trim(),
+        yontem: odemeModal.yontem,
       })
-      setOdemeModal((m) => ({ ...m, open: false }))
+      setOdemeModal({ open: false, tutar: '', note: '', yontem: null })
     } catch {
       setOdemeError('Kaydedilemedi. Tekrar deneyin.')
     }
   }
 
-  async function onYansit(hareketId: string) {
+  async function onYansit(hareketId: string, yontem: OdemeYontemi | null) {
     setYansitError('')
     setYansitBusyId(hareketId)
     try {
-      await yansit.mutateAsync({ hareketId })
+      await yansit.mutateAsync({ hareketId, yontem })
     } catch {
       setYansitError('Ödeme toplanamadı. Tekrar deneyin.')
     } finally {
@@ -238,8 +245,9 @@ export default function IsletmeDetay() {
   async function onConfirmYansit() {
     if (!yansitConfirm) return
     const hareketId = yansitConfirm.id
+    const yontem = yansitYontem
     setYansitConfirm(null)
-    await onYansit(hareketId)
+    await onYansit(hareketId, yontem)
   }
 
   async function onYansitAll() {
@@ -249,7 +257,7 @@ export default function IsletmeDetay() {
     for (const h of hareketler) {
       if (h.kasa_durumu !== 'YOK') continue
       try {
-        await yansit.mutateAsync({ hareketId: h.id })
+        await yansit.mutateAsync({ hareketId: h.id, yontem: yansitAllYontem })
       } catch {
         failed += 1
       }
@@ -390,7 +398,7 @@ export default function IsletmeDetay() {
             type="button"
             onClick={() => {
               setOdemeError('')
-              setOdemeModal({ open: true, tutar: '', note: '' })
+              setOdemeModal({ open: true, tutar: '', note: '', yontem: null })
             }}
             className="pressable flex flex-1 cursor-pointer items-center justify-center gap-[6px] whitespace-nowrap rounded-[13px] bg-card px-1 py-[13px]"
           >
@@ -502,7 +510,14 @@ export default function IsletmeDetay() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => setYansitConfirm(h)}
+                          onClick={() => {
+                            // her açılışta sıfırla: önceki tahsilatın yöntemi
+                            // sessizce bir sonrakine taşınmasın (054'te saklı
+                            // varsa onunla önden dolar)
+                            setYansitError('')
+                            setYansitYontem(h.odeme_yontemi ?? null)
+                            setYansitConfirm(h)
+                          }}
                           disabled={yansitBusyId === h.id}
                           className="cursor-pointer rounded-[9px] bg-ink px-3 py-[7px] text-xs font-semibold text-white disabled:opacity-60"
                         >
@@ -536,6 +551,8 @@ export default function IsletmeDetay() {
               <button
                 type="button"
                 onClick={() => {
+                  setYansitAllError('')
+                  setYansitAllYontem(null)
                   setYansitAllError('')
                   setYansitAllOpen(true)
                 }}
@@ -629,6 +646,16 @@ export default function IsletmeDetay() {
             className={modalInputCls}
           />
         </div>
+        {/* 054: tahsilatın hangi kovaya gireceği. Hareketin üstünde saklanır →
+            "Tümünü Topla" toplu da olsa her hareket kendi kovasına gider. */}
+        <div>
+          <div className={modalFieldLabel}>ÖDEME YÖNTEMİ — İSTEĞE BAĞLI</div>
+          <YontemSecici
+            value={odemeModal.yontem}
+            onChange={(yontem) => setOdemeModal((m) => ({ ...m, yontem }))}
+            allowNull
+          />
+        </div>
         <p className="text-xs leading-relaxed text-faint">
           Tutar cari hesaptan düşülür ve kasa geliri olarak onay kuyruğuna gönderilir —
           kasa, Onay bölümünde onaylanana kadar etkilenmez.
@@ -653,22 +680,28 @@ export default function IsletmeDetay() {
         onCancel={() => setDeleting(null)}
       />
 
-      {/* Ödeme Topla onayı (tek hareket) */}
-      <ConfirmDialog
+      {/* Ödeme Topla onayı (tek hareket) — 055: yöntem burada seçilir */}
+      <FormModal
         open={yansitConfirm !== null}
         title="Ödeme topla"
-        message={
-          yansitConfirm
+        error={yansitError}
+        busy={yansitBusyId !== null}
+        confirmLabel="Topla"
+        onConfirm={() => void onConfirmYansit()}
+        onClose={() => setYansitConfirm(null)}
+      >
+        <p className="text-[13px] leading-relaxed text-muted">
+          {yansitConfirm
             ? `${yansitConfirm.note || (yansitConfirm.tur === 'GELIR' ? 'Borç' : 'Ödeme')} (${formatTL(
                 numericStringToKurus(String(yansitConfirm.tutar)),
               )}) tahsilatı onaya gönderilecek.`
-            : ''
-        }
-        confirmLabel="Topla"
-        busy={false}
-        onConfirm={() => void onConfirmYansit()}
-        onCancel={() => setYansitConfirm(null)}
-      />
+            : ''}
+        </p>
+        <div>
+          <div className={modalFieldLabel}>TAHSİLAT YÖNTEMİ — İSTEĞE BAĞLI</div>
+          <YontemSecici value={yansitYontem} onChange={setYansitYontem} allowNull />
+        </div>
+      </FormModal>
 
       {/* Tümünü Topla onayı — lists exactly what will hit the Onay queue */}
       <FormModal
@@ -684,6 +717,12 @@ export default function IsletmeDetay() {
           Aşağıdaki {hareketler.length} hareket için ödeme toplanacak (onay kuyruğuna
           gönderilecek):
         </p>
+        {/* 055: toplu tahsilatta tek yöntem hepsine uygulanır; boş bırakılırsa
+            her hareket kendi saklı yöntemine düşer (054) */}
+        <div>
+          <div className={modalFieldLabel}>TAHSİLAT YÖNTEMİ — İSTEĞE BAĞLI</div>
+          <YontemSecici value={yansitAllYontem} onChange={setYansitAllYontem} allowNull />
+        </div>
         <div className="flex max-h-[260px] flex-col gap-[6px] overflow-y-auto">
           {hareketler.map((h) => (
             <div

@@ -129,7 +129,8 @@ function UndoSmallIcon() {
  *  `onDelete` adds a trash button (finance screens); `onOnayaGonder`
  *  adds the Yönetici-only "onaya geri gönder" undo button (040).
  *  `onOpen` (varsa) kartı tıklanabilir yapar: işlemin oluşturulduğu yere gider
- *  (kayıt/işletme/personel/sabit gider). Aksiyon butonları tıklamayı yutmaz. */
+ *  (kayıt/işletme/personel/sabit gider). Aksiyon butonları tıklamayı yutmaz.
+ */
 export default function TxCard({
   islem,
   variant,

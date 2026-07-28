@@ -118,7 +118,7 @@ export function useDeletePrimPaket() {
 
 // ═══ Personel ═══════════════════════════════════════════════
 
-const MEMBER_SELECT = 'profile_id, business_id, maas, odeme_gunu, profile:profiles(id, full_name, role, status)'
+const MEMBER_SELECT = 'profile_id, business_id, maas, odeme_gunu, odeme_yontemi, profile:profiles(id, full_name, role, status)'
 
 export function useMembers(businessId: string) {
   return useQuery({
@@ -323,9 +323,14 @@ function useIstekMutation<TInput>(fn: (input: TInput) => Promise<void>) {
   })
 }
 
+/** 056: avans isteğini onaylamak da avans OLUŞTURUR → yöntem burada da
+ *  zorunlu (sunucu null gelirse Türkçe hata verir). */
 export function useApproveAvansIstek() {
-  return useIstekMutation(async ({ id }: { id: string }) => {
-    const { error } = await supabase.rpc('approve_avans_istek', { p_id: id })
+  return useIstekMutation(async ({ id, yontem }: { id: string; yontem: OdemeYontemi }) => {
+    const { error } = await supabase.rpc('approve_avans_istek', {
+      p_id: id,
+      p_yontem: yontem,
+    })
     if (error) throw error
   })
 }
@@ -372,12 +377,20 @@ export function useSetRole() {
 
 export function useUpdateMemberPay() {
   return usePersonelMutation(
-    async (input: { profileId: string; businessId: string; maasKurus: number; odemeGunu: number }) => {
+    async (input: {
+      profileId: string
+      businessId: string
+      maasKurus: number
+      odemeGunu: number
+      // 054: maaşın kasa kovası — elle ödeme ve cron otomatik maaşı buradan okur
+      yontem: OdemeYontemi | null
+    }) => {
       const { error } = await supabase.rpc('update_member_pay', {
         p_profile: input.profileId,
         p_business: input.businessId,
         p_maas: kurusToNumericString(input.maasKurus),
         p_odeme_gunu: input.odemeGunu,
+        p_yontem: input.yontem,
       })
       if (error) throw error
     },
@@ -394,14 +407,22 @@ export function useSetBusinessAccess() {
   })
 }
 
+// 054: yöntem seçilebilir (null = seçilmedi; avans/prim'de Yönetici Onay'da seçer)
 export function useGivePrim() {
   return usePersonelMutation(
-    async (input: { profileId: string; businessId: string; kurus: number; note: string }) => {
+    async (input: {
+      profileId: string
+      businessId: string
+      kurus: number
+      note: string
+      yontem: OdemeYontemi | null
+    }) => {
       const { error } = await supabase.rpc('give_prim', {
         p_profile: input.profileId,
         p_business: input.businessId,
         p_tutar: kurusToNumericString(input.kurus),
         p_note: input.note,
+        p_yontem: input.yontem,
       })
       if (error) throw error
     },
@@ -410,12 +431,19 @@ export function useGivePrim() {
 
 export function useGiveAvans() {
   return usePersonelMutation(
-    async (input: { profileId: string; businessId: string; kurus: number; note: string }) => {
+    async (input: {
+      profileId: string
+      businessId: string
+      kurus: number
+      note: string
+      yontem: OdemeYontemi | null
+    }) => {
       const { error } = await supabase.rpc('give_avans', {
         p_profile: input.profileId,
         p_business: input.businessId,
         p_tutar: kurusToNumericString(input.kurus),
         p_note: input.note,
+        p_yontem: input.yontem,
       })
       if (error) throw error
     },
@@ -423,13 +451,16 @@ export function useGiveAvans() {
 }
 
 export function usePayMaas() {
-  return usePersonelMutation(async (input: { profileId: string; businessId: string }) => {
-    const { error } = await supabase.rpc('pay_maas', {
-      p_profile: input.profileId,
-      p_business: input.businessId,
-    })
-    if (error) throw error
-  })
+  return usePersonelMutation(
+    async (input: { profileId: string; businessId: string; yontem: OdemeYontemi | null }) => {
+      const { error } = await supabase.rpc('pay_maas', {
+        p_profile: input.profileId,
+        p_business: input.businessId,
+        p_yontem: input.yontem,
+      })
+      if (error) throw error
+    },
+  )
 }
 
 export function useApproveSignup() {
@@ -620,24 +651,35 @@ export function useDeleteHareket() {
 }
 
 /** Hareket "Ödeme Topla" — atomic RPC: pending kasa geliri + hareket BEKLIYOR. */
+/** 055: yöntem TAHSİLAT anında seçilir. null gönderilirse RPC harekette
+ *  saklı olana düşer (topla_cari_odeme ile açılmış hareketler bozulmaz). */
 export function useYansitHareket() {
-  return useCariMutation(async (input: { hareketId: string }) => {
-    const { error } = await supabase.rpc('yansit_cari_hareket', {
-      p_hareket_id: input.hareketId,
-    })
-    if (error) throw error
-  })
+  return useCariMutation(
+    async (input: { hareketId: string; yontem: OdemeYontemi | null }) => {
+      const { error } = await supabase.rpc('yansit_cari_hareket', {
+        p_hareket_id: input.hareketId,
+        p_yontem: input.yontem,
+      })
+      if (error) throw error
+    },
+  )
 }
 
 /** Genel "Ödeme Topla" — atomic RPC (032): ödeme hareketi (bakiyeden düşer)
  *  + pending kasa geliri; kasa Onay'a kadar etkilenmez. */
 export function useToplaOdeme() {
   return useCariMutation(
-    async (input: { cariIsletmeId: string; kurus: number; note: string }) => {
+    async (input: {
+      cariIsletmeId: string
+      kurus: number
+      note: string
+      yontem: OdemeYontemi | null
+    }) => {
       const { error } = await supabase.rpc('topla_cari_odeme', {
         p_cari: input.cariIsletmeId,
         p_tutar: kurusToNumericString(input.kurus),
         p_note: input.note,
+        p_yontem: input.yontem,
       })
       if (error) throw error
     },
@@ -663,6 +705,7 @@ export function useCreateSabitGider() {
       kurus: number
       odemeGunu: number
       kategoriId: string | null
+      yontem: OdemeYontemi | null
     }) => {
       const { error } = await supabase.from('sabit_giderler').insert({
         business_id: input.businessId,
@@ -670,6 +713,7 @@ export function useCreateSabitGider() {
         tutar: kurusToNumericString(input.kurus),
         odeme_gunu: input.odemeGunu,
         kategori_id: input.kategoriId,
+        odeme_yontemi: input.yontem,
       })
       if (error) throw error
     },
@@ -684,6 +728,7 @@ export function useUpdateSabitGider() {
       kurus: number
       odemeGunu: number
       kategoriId: string | null
+      yontem: OdemeYontemi | null
     }) => {
       const { error } = await supabase
         .from('sabit_giderler')
@@ -692,6 +737,7 @@ export function useUpdateSabitGider() {
           tutar: kurusToNumericString(input.kurus),
           odeme_gunu: input.odemeGunu,
           kategori_id: input.kategoriId,
+          odeme_yontemi: input.yontem,
         })
         .eq('id', input.id)
       if (error) throw error

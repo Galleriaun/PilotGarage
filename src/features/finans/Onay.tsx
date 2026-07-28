@@ -80,7 +80,9 @@ function OnayCard({
   const source = SOURCE_META[islem.kaynak]
   // Ödeme yöntemi baştan belliyse (finans kaydı / manuel giriş) Onay'da tekrar
   // sorulmaz — yalnızca personel kaydı gibi yöntemsiz doğan işlemlerde seçilir.
-  const preset = islem.odeme_yontemi !== null
+  // 054 istisnası: avans/prim (kaynak PERSONEL) baştan seçilmiş olsa bile
+  // Yönetici Onay'da DEĞİŞTİREBİLİR (owner isteği) — seçici hep açık kalır.
+  const preset = islem.odeme_yontemi !== null && islem.kaynak !== 'PERSONEL'
 
   return (
     <div className="rounded-[18px] border border-[#EDEDED] bg-white p-4 shadow-[0_1px_2px_rgba(0,0,0,0.03),0_4px_12px_rgba(0,0,0,0.04)]">
@@ -306,7 +308,8 @@ export default function Onay() {
     setCardError(islem.id, '')
     // Yöntem baştan belliyse (finans kaydı / manuel) doğrudan onayla; RPC saklı
     // yöntem ve komisyona düşer (033). Onay'da yöntem tekrar seçilmez.
-    if (islem.odeme_yontemi !== null) {
+    // 054: PERSONEL (avans/prim) hariç — orada seçilen yöntem gönderilir.
+    if (islem.odeme_yontemi !== null && islem.kaynak !== 'PERSONEL') {
       setBusyId(islem.id)
       try {
         await approve.mutateAsync({ islemId: islem.id, odemeYontemi: null, komisyon: null })

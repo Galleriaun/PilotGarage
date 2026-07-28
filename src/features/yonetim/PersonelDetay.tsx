@@ -4,6 +4,7 @@ import { useAuth } from '../../app/providers/AuthProvider'
 import { useBusiness } from '../../app/providers/BusinessProvider'
 import ConfirmDialog from '../../components/ui/ConfirmDialog'
 import FloatingSavePopup from '../../components/ui/FloatingSavePopup'
+import { YontemSecici } from '../../components/ui/YontemSecici'
 import {
   istanbulTodayISO,
   formatDateDots,
@@ -219,6 +220,8 @@ interface Draft {
   maasKurus: number
   odemeGunu: number
   businessIds: string[]
+  /** 054: maaşın kasa kovası — elle ödeme ve cron otomatik maaşı buradan okur */
+  maasYontem: OdemeYontemi | null
 }
 
 export default function PersonelDetay() {
@@ -251,11 +254,12 @@ export default function PersonelDetay() {
   const [draft, setDraft] = useState<Partial<Draft>>({})
   const [editOpen, setEditOpen] = useState(false)
   const [roleModalOpen, setRoleModalOpen] = useState(false)
-  const [avansModal, setAvansModal] = useState<{ open: boolean; tutar: string; note: string }>({
-    open: false,
-    tutar: '',
-    note: '',
-  })
+  const [avansModal, setAvansModal] = useState<{
+    open: boolean
+    tutar: string
+    note: string
+    yontem: OdemeYontemi | null
+  }>({ open: false, tutar: '', note: '', yontem: null })
   // Prim (050): her paketten kaç adet seçildiği (paketId → adet, 0–PRIM_ADET_MAX).
   // Adet > 0 olan paket varsa tutar = Σ(paket tutarı × adet) — otomatik/canlı,
   // açıklama = seçilen paketler (×adet); hiç seçili değilse elle tutar + açıklama.
@@ -264,7 +268,8 @@ export default function PersonelDetay() {
     tutar: string
     note: string
     paketAdet: Record<string, number>
-  }>({ open: false, tutar: '', note: '', paketAdet: {} })
+    yontem: OdemeYontemi | null
+  }>({ open: false, tutar: '', note: '', paketAdet: {}, yontem: null })
   // Cepten ödeme borcunu geri öde (053): tutar + ödeme tipi (+ opsiyonel açıklama)
   const [odeModal, setOdeModal] = useState<{
     open: boolean
@@ -348,12 +353,16 @@ export default function PersonelDetay() {
     maasKurus: numericStringToKurus(String(member.maas)),
     odemeGunu: member.odeme_gunu,
     businessIds: savedBusinessIds,
+    maasYontem: member.odeme_yontemi,
   }
   const current: Draft = {
     role: draft.role ?? saved.role,
     maasKurus: draft.maasKurus ?? saved.maasKurus,
     odemeGunu: draft.odemeGunu ?? saved.odemeGunu,
     businessIds: draft.businessIds ?? saved.businessIds,
+    // `??` yerine açık undefined kontrolü: null (= "seçilmedi") geçerli bir
+    // taslak değeri, `??` onu kayıtlı değere geri düşürürdü
+    maasYontem: draft.maasYontem !== undefined ? draft.maasYontem : saved.maasYontem,
   }
   const businessIdsChanged =
     isYonetici &&
@@ -363,6 +372,7 @@ export default function PersonelDetay() {
     current.role !== saved.role ||
     current.maasKurus !== saved.maasKurus ||
     current.odemeGunu !== saved.odemeGunu ||
+    current.maasYontem !== saved.maasYontem ||
     businessIdsChanged
 
   const anyModalOpen =
@@ -385,12 +395,17 @@ export default function PersonelDetay() {
       if (businessIdsChanged) {
         await setBusinessAccess.mutateAsync({ profileId: id, businessIds: current.businessIds })
       }
-      if (current.maasKurus !== saved.maasKurus || current.odemeGunu !== saved.odemeGunu) {
+      if (
+        current.maasKurus !== saved.maasKurus ||
+        current.odemeGunu !== saved.odemeGunu ||
+        current.maasYontem !== saved.maasYontem
+      ) {
         await updatePay.mutateAsync({
           profileId: id,
           businessId,
           maasKurus: current.maasKurus,
           odemeGunu: current.odemeGunu,
+          yontem: current.maasYontem,
         })
       }
       setDraft({})
@@ -421,9 +436,13 @@ export default function PersonelDetay() {
     const note = primPaketMode
       ? primSelected.map((x) => (x.adet > 1 ? `${x.paket.name} ×${x.adet}` : x.paket.name)).join(', ')
       : primModal.note.trim()
+    if (!primModal.yontem) {
+      setError('Ödeme yöntemi seçin.')
+      return
+    }
     try {
-      await givePrim.mutateAsync({ profileId: id, businessId, kurus, note })
-      setPrimModal({ open: false, tutar: '', note: '', paketAdet: {} })
+      await givePrim.mutateAsync({ profileId: id, businessId, kurus, note, yontem: primModal.yontem })
+      setPrimModal({ open: false, tutar: '', note: '', paketAdet: {}, yontem: null })
     } catch {
       setError('Prim verilemedi. Tekrar deneyin.')
     }
@@ -466,14 +485,20 @@ export default function PersonelDetay() {
       setError('Geçerli bir tutar girin.')
       return
     }
+    // 056: yöntem zorunlu (sunucu da reddeder; bu yalnızca erken uyarı)
+    if (!avansModal.yontem) {
+      setError('Ödeme yöntemi seçin.')
+      return
+    }
     try {
       await giveAvans.mutateAsync({
         profileId: id,
         businessId,
         kurus,
         note: avansModal.note.trim(),
+        yontem: avansModal.yontem,
       })
-      setAvansModal({ open: false, tutar: '', note: '' })
+      setAvansModal({ open: false, tutar: '', note: '', yontem: null })
     } catch {
       setError('Avans verilemedi. Tekrar deneyin.')
     }
@@ -481,7 +506,7 @@ export default function PersonelDetay() {
 
   async function onPayMaas() {
     try {
-      await payMaas.mutateAsync({ profileId: id, businessId })
+      await payMaas.mutateAsync({ profileId: id, businessId, yontem: null })
       setConfirmMaas(false)
     } catch {
       setConfirmMaas(false)
@@ -659,6 +684,19 @@ export default function PersonelDetay() {
                 allowManual
               />
             </div>
+            {/* 054: maaşın kasa kovası. Hem "Maaş Öde" hem cron'un otomatik
+                maaşı buradan okur; seçili olana tekrar dokunmak seçimi kaldırır.
+                Mevcut maaş SATIRLARI değişmez — ayar bundan sonrasını kapsar. */}
+            <div>
+              <div className="mb-2 text-[11px] font-bold tracking-[0.6px] text-faint">
+                MAAŞ ÖDEME YÖNTEMİ — İSTEĞE BAĞLI
+              </div>
+              <YontemSecici
+                value={current.maasYontem}
+                onChange={(yontem) => setDraft((d) => ({ ...d, maasYontem: yontem }))}
+                allowNull
+              />
+            </div>
             {isYonetici && !isSelf && (
               <div>
                 <div className="mb-2 text-[11px] font-bold tracking-[0.6px] text-faint">
@@ -707,7 +745,7 @@ export default function PersonelDetay() {
               type="button"
               onClick={() => {
                 setError('')
-                setAvansModal({ open: true, tutar: '', note: '' })
+                setAvansModal({ open: true, tutar: '', note: '', yontem: null })
               }}
               className="flex cursor-pointer items-center gap-[5px] rounded-[10px] bg-ink px-3 py-[7px]"
             >
@@ -734,7 +772,7 @@ export default function PersonelDetay() {
               type="button"
               onClick={() => {
                 setError('')
-                setPrimModal({ open: true, tutar: '', note: '', paketAdet: {} })
+                setPrimModal({ open: true, tutar: '', note: '', paketAdet: {}, yontem: null })
               }}
               className="flex cursor-pointer items-center gap-[5px] rounded-[10px] bg-success px-3 py-[7px]"
             >
@@ -885,7 +923,7 @@ export default function PersonelDetay() {
         busy={giveAvans.isPending}
         confirmLabel="Ver"
         onConfirm={() => void onGiveAvans()}
-        onClose={() => setAvansModal({ open: false, tutar: '', note: '' })}
+        onClose={() => setAvansModal({ open: false, tutar: '', note: '', yontem: null })}
       >
         <div>
           <div className={modalFieldLabel}>TUTAR (₺)</div>
@@ -907,6 +945,15 @@ export default function PersonelDetay() {
             className={modalInputCls}
           />
         </div>
+        {/* 056: ZORUNLU — oluştururken seçilir. Yönetici Onay'da olduğu gibi
+            onaylar ya da değiştirir (Onay seçicisi PERSONEL'de hep açık). */}
+        <div>
+          <div className={modalFieldLabel}>ÖDEME YÖNTEMİ</div>
+          <YontemSecici
+            value={avansModal.yontem}
+            onChange={(yontem) => setAvansModal((m) => ({ ...m, yontem }))}
+          />
+        </div>
       </FormModal>
 
       {/* Prim modal */}
@@ -917,7 +964,7 @@ export default function PersonelDetay() {
         busy={givePrim.isPending}
         confirmLabel="Ver"
         onConfirm={() => void onGivePrim()}
-        onClose={() => setPrimModal({ open: false, tutar: '', note: '', paketAdet: {} })}
+        onClose={() => setPrimModal({ open: false, tutar: '', note: '', paketAdet: {}, yontem: null })}
       >
         {/* Paket seçici (050) — tutarın ÜSTÜNDE. Her paketten adet seçilir
             (yukarı/aşağı ok, 0–PRIM_ADET_MAX); tutar Σ(tutar × adet) ile canlı
@@ -1000,6 +1047,15 @@ export default function PersonelDetay() {
             />
           </div>
         )}
+        {/* 056: ZORUNLU — oluştururken seçilir; Yönetici Onay'da değiştirebilir.
+            Paket modunda da görünür: kova tutardan bağımsız. */}
+        <div>
+          <div className={modalFieldLabel}>ÖDEME YÖNTEMİ</div>
+          <YontemSecici
+            value={primModal.yontem}
+            onChange={(yontem) => setPrimModal((m) => ({ ...m, yontem }))}
+          />
+        </div>
       </FormModal>
 
       {/* Cepten ödeme borcunu geri öde (053) */}
