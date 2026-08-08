@@ -38,6 +38,10 @@ export interface PersonelOdeme {
    *  null = bağlı işlem yok: eski/kasa-dışı avans (045 öncesi kayıtlar ya da
    *  işlemi kaldırılmış satır) — GERÇEK, verilmiş bir avanstır. */
   islem: { durum: 'BEKLIYOR' | 'ONAYLANDI' | 'REDDEDILDI' } | null
+  /** 057: MAAS satırında bu ödemenin kapattığı avans borcu (kasaya net yazılır) */
+  avans_dusulen: number | string
+  /** 057: AVANS satırında borca dahil mi. Migration öncesi satırlar false */
+  borca_sayilir: boolean
 }
 
 /**

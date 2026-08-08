@@ -5,7 +5,7 @@
 -- Everything happens inside one transaction that is ROLLED BACK at the
 -- end — no test data survives, safe to run on the live project.
 --
--- Prerequisite: migrations 001–056 applied. (Checks were written against
+-- Prerequisite: migrations 001–057 applied. (Checks were written against
 -- 001–013; the later migrations keep every asserted behavior — decided-row
 -- immutability now has RPC-only escape hatches that this file does not
 -- exercise, so all checks still pass unchanged.)
@@ -1859,6 +1859,133 @@ begin
   end;
   perform pg_temp.logout();
   raise notice 'PASS 37: cari tahsilat yöntemi toplama anında seçilir, harekete de yazılır (055)';
+
+
+  -- ═══ 38) 057: avans borcu — maaştan düşme ve sonraki döneme devir ═══
+  -- Hedef u_muhasebe: avans/maaş testlerinin hiçbiri bu kişiye dokunmadı,
+  -- dolayısıyla borç deterministik olarak 0'dan başlar (u_personel PASS
+  -- 20/23/28/36'dan avans taşıyor, oradan ölçüm yapılamaz).
+
+  perform pg_temp.logout();
+  select avans_borcu(u_muhasebe, v_servis) into gider_before;
+  if gider_before <> 0 then
+    raise exception 'FAIL: fixture borcu 0 olmalıydı, got % (057)', gider_before;
+  end if;
+  select bakiye into gelir_before from v_kasa_ozet where business_id = v_servis;
+
+  -- (a) helper istemciye kapalı: borç yalnızca sunucu içi hesaplanır
+  perform pg_temp.login(u_muhasebe);
+  begin
+    perform avans_borcu(u_muhasebe, v_servis);
+    raise exception 'FAIL: avans_borcu authenticated rolünden çağrılabildi (057)';
+  exception when others then
+    if sqlerrm like 'FAIL:%' then raise; end if; -- expected: permission denied
+  end;
+
+  -- (b) maaşın ALTINDA avans → maaş NET öder, borç kapanır
+  perform update_member_pay(u_muhasebe, v_servis, 1000.00, 0, 'NAKIT');
+  select give_avans(u_muhasebe, v_servis, 400.00, '057 avans', 'NAKIT') into v_islem_c1;
+  perform pg_temp.logout();
+  -- Onay bekleyen avans borcu ETKİLEMEZ (kasadan henüz çıkmadı)
+  if avans_borcu(u_muhasebe, v_servis) <> 0 then
+    raise exception 'FAIL: BEKLIYOR avans borca sayıldı (057)';
+  end if;
+  perform pg_temp.login(u_yonetici);
+  perform approve_islem(v_islem_c1, null);
+  perform pg_temp.logout();
+  if avans_borcu(u_muhasebe, v_servis) <> 400.00 then
+    raise exception 'FAIL: onaylı avans borcu 400 olmalı (057)';
+  end if;
+
+  perform pg_temp.login(u_muhasebe);
+  select pay_maas(u_muhasebe, v_servis) into v_maas;
+  perform pg_temp.logout();
+  select tutar into gider_after from islemler where id = v_maas;
+  if gider_after <> 600.00 then
+    raise exception 'FAIL: net maaş 600 olmalı (1000-400), got % (057)', gider_after;
+  end if;
+  -- defterde TAM maaş durur, ne kadarının borca sayıldığı ayrı kolonda
+  select tutar::text || '/' || avans_dusulen::text into v_durum
+  from personel_odemeler where islem_id = v_maas;
+  if v_durum <> '1000.00/400.00' then
+    raise exception 'FAIL: defter 1000.00/400.00 olmalı, got % (057)', v_durum;
+  end if;
+  if avans_borcu(u_muhasebe, v_servis) <> 0 then
+    raise exception 'FAIL: maaş sonrası borç kapanmalıydı (057)';
+  end if;
+
+  -- (c) maaşı AŞAN avans → 0 tutarlı kasa işlemi, kalan DEVREDER
+  perform pg_temp.login(u_muhasebe);
+  select give_avans(u_muhasebe, v_servis, 1500.00, '057 aşan avans', 'NAKIT')
+    into v_islem_c2;
+  perform pg_temp.logout();
+  perform pg_temp.login(u_yonetici);
+  perform approve_islem(v_islem_c2, null);
+  perform pg_temp.logout();
+
+  perform pg_temp.login(u_muhasebe);
+  select pay_maas(u_muhasebe, v_servis) into v_maas;
+  perform pg_temp.logout();
+  select tutar into gider_after from islemler where id = v_maas;
+  if gider_after <> 0 then
+    raise exception 'FAIL: borç maaşı aşınca işlem 0 tutarlı olmalı, got % (057)', gider_after;
+  end if;
+  if avans_borcu(u_muhasebe, v_servis) <> 500.00 then
+    raise exception 'FAIL: kalan 500 devretmeliydi (1500-1000), got % (057)',
+      avans_borcu(u_muhasebe, v_servis);
+  end if;
+
+  -- (d) sonraki dönem devreden borcu düşer
+  perform pg_temp.login(u_muhasebe);
+  select pay_maas(u_muhasebe, v_servis) into v_maas;
+  perform pg_temp.logout();
+  select tutar into gider_after from islemler where id = v_maas;
+  if gider_after <> 500.00 then
+    raise exception 'FAIL: devreden borç düşmeliydi (1000-500), got % (057)', gider_after;
+  end if;
+  if avans_borcu(u_muhasebe, v_servis) <> 0 then
+    raise exception 'FAIL: devreden borç kapanmalıydı (057)';
+  end if;
+
+  -- (e) ÇİFTE ÖDEME YOK: kasadan çıkan = 3 dönem × 1000 tam maaş
+  --     (400+600) + (1500+0) + 500 = 3000
+  select bakiye into gelir_after from v_kasa_ozet where business_id = v_servis;
+  if gelir_after <> gelir_before - 3000.00 then
+    raise exception 'FAIL: kasa 3000 düşmeliydi (avans+net maaş = tam maaş), % -> % (057)',
+      gelir_before, gelir_after;
+  end if;
+
+  -- (f) silinen avans borcu geri düşürür — delete_islem bağlı defter satırını
+  -- da siler (045), yani borç kendiliğinden düzelir, ayrı temizlik gerekmez
+  perform pg_temp.login(u_muhasebe);
+  select give_avans(u_muhasebe, v_servis, 250.00, '057 silinecek avans', 'NAKIT')
+    into v_islem_c1;
+  perform pg_temp.logout();
+  perform pg_temp.login(u_yonetici);
+  perform approve_islem(v_islem_c1, null);
+  perform pg_temp.logout();
+  if avans_borcu(u_muhasebe, v_servis) <> 250.00 then
+    raise exception 'FAIL: yeni avans borcu 250 olmalıydı (057)';
+  end if;
+  perform pg_temp.login(u_muhasebe);
+  perform delete_islem(v_islem_c1);
+  perform pg_temp.logout();
+  if avans_borcu(u_muhasebe, v_servis) <> 0 then
+    raise exception 'FAIL: silinen avans borçtan düşmeliydi, kalan % (057)',
+      avans_borcu(u_muhasebe, v_servis);
+  end if;
+
+  -- (g) 0 tutar izni BİLEREK DAR: yalnızca PERSONEL. Tablo sahibi olarak
+  -- denenir → RLS değil, CHECK kısıtı reddetmeli.
+  begin
+    insert into islemler (business_id, tur, tutar, baslik, kaynak, durum, islem_tarihi)
+    values (v_servis, 'GIDER', 0, 'Sıfır manuel', 'MANUEL', 'BEKLIYOR', istanbul_today());
+    raise exception 'FAIL: MANUEL işlem 0 tutarla eklenebildi (057 kısıtı dar olmalı)';
+  exception when others then
+    if sqlerrm like 'FAIL:%' then raise; end if; -- expected: islemler_tutar_check
+  end;
+
+  raise notice 'PASS 38: avans borcu — net maaş, 0 tutarlı işlem, devir, çifte ödeme yok (057)';
 
   raise notice '';
   raise notice '=== ALL TESTS PASSED (rolling back — no test data persists) ===';

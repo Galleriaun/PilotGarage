@@ -121,7 +121,9 @@ export function useTekrarKurallari(businessId: string) {
   })
 }
 
-/** Members with automatic salary payment — feeds the Sabit Ödemeler widget. */
+/** Members with automatic salary payment — feeds the Sabit Ödemeler widget.
+ *  BRÜT maaş gösterir: bu bir bütçe/tahmin kartıdır, kasa rakamı değil.
+ *  (057'de avans borcu düşülmüş NET denendi, owner geri aldı.) */
 export function useMaasOdemeleri(businessId: string) {
   return useQuery({
     queryKey: ['maas-odemeleri', businessId],
@@ -261,6 +263,9 @@ export function useApproveIslem() {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['islemler'] })
+      // 057: avans onaylanınca borç değişir → Personel Detay kartındaki borç
+      // bayat kalmasın (avans BEKLIYOR iken borca sayılmıyordu)
+      void queryClient.invalidateQueries({ queryKey: ['personel-odemeler'] })
     },
   })
 }
@@ -404,6 +409,8 @@ export function useDeleteIslem() {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['islemler'] })
+      // 057: avans/maaş satırı silinince veya reddedilince borç değişir
+      void queryClient.invalidateQueries({ queryKey: ['personel-odemeler'] })
       // a deleted CARI_HESAP işlem resets its hareket to YOK
       void queryClient.invalidateQueries({ queryKey: ['cari'] })
     },
@@ -419,6 +426,8 @@ export function useRejectIslem() {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['islemler'] })
+      // 057: avans/maaş satırı silinince veya reddedilince borç değişir
+      void queryClient.invalidateQueries({ queryKey: ['personel-odemeler'] })
       // a rejected CARI_HESAP işlem resets its hareket to YOK
       void queryClient.invalidateQueries({ queryKey: ['cari'] })
     },

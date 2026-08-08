@@ -32,6 +32,7 @@ import {
   useSetStatus,
   useUpdateMemberPay,
 } from './api'
+import { avansBorcuKurus } from './avans'
 import { odemeOnayli, ROLE_LABELS, ROLE_OPTIONS, type PersonelOdeme } from './types'
 import {
   Avatar,
@@ -301,6 +302,10 @@ export default function PersonelDetay() {
       .reduce((sum, o) => sum + numericStringToKurus(String(o.tutar)), 0)
   const cycleAvansKurus = sumCycle(avanslar)
   const cyclePrimKurus = sumCycle(primler)
+  // 057: açık avans borcu — bu dönemin avansı DAHİL (sunucudaki avans_borcu()
+  // ile birebir aynı formül). "Önceki" kısım devredendir.
+  const avansBorcKurus = useMemo(() => avansBorcuKurus(odemeler), [odemeler])
+  const oncekiBorcKurus = Math.max(0, avansBorcKurus - cycleAvansKurus)
 
   // Prim (050): adet>0 olan paketler + tutar/açıklama türetimi. Paket seçiliyse
   // tutar = Σ(paket tutarı × adet) — canlı; açıklama = paket adları (×adet); hiç
@@ -379,7 +384,8 @@ export default function PersonelDetay() {
     roleModalOpen || avansModal.open || primModal.open || confirmMaas || confirmStatus
   const saveBusy = setRole.isPending || updatePay.isPending || setBusinessAccess.isPending
 
-  const kalanKurus = current.maasKurus - cycleAvansKurus
+  // 057: maaştan borcun TAMAMI düşülür; aşan kısım devrettiği için negatife düşmez
+  const kalanKurus = Math.max(0, current.maasKurus - avansBorcKurus)
   const disabled = member.profile.status === 'DISABLED'
 
   async function onSaveDraft() {
@@ -638,6 +644,13 @@ export default function PersonelDetay() {
               ? `Otomatik ödeme: ayın ${current.odemeGunu}'i`
               : 'Otomatik ödeme: kapalı'}
           </div>
+          {/* 057: geçen dönemden devreden avans borcu — bu dönemin maaşından
+              da düşülür. Yalnızca devir varsa görünür. */}
+          {oncekiBorcKurus > 0 && (
+            <div className="mt-[3px] text-[13px] font-bold text-danger">
+              Önceki avans borcu: {formatTL(oncekiBorcKurus, { decimals: 2 })}
+            </div>
+          )}
           <div className="my-4 h-px bg-divider" />
           <div className="flex gap-4">
             <div className="min-w-0 flex-1">
@@ -645,7 +658,18 @@ export default function PersonelDetay() {
               <div className="text-lg font-bold text-warn">
                 {formatTL(cycleAvansKurus, { decimals: 2 })}
               </div>
-              <div className="mt-1 text-[11px] text-faint">Maaştan düşülecek</div>
+              {/* Not, SONRAKİ maaştan gerçekten düşecek tutarı anlatır = açık
+                  borç. Borç yoksa (hiç avans yok ya da önceki maaşla kapandı)
+                  düşecek bir şey de yok → not hiç görünmez. */}
+              {avansBorcKurus > 0 && (
+                <div className="mt-1 text-[11px] text-faint">
+                  {oncekiBorcKurus > 0
+                    ? `Bu dönem · borçla toplam ${formatTL(avansBorcKurus, {
+                        decimals: 2,
+                      })} düşülecek`
+                    : 'Maaştan düşülecek'}
+                </div>
+              )}
             </div>
             <div className="min-w-0 flex-1">
               <div className="mb-[5px] text-xs text-muted">Kalan (ödenecek)</div>
