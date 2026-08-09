@@ -6,7 +6,8 @@ export interface MesaiKayit {
   id: string
   profile_id: string
   tip: 'GIRIS' | 'CIKIS'
-  kaynak: 'IP' | 'KONUM' | 'MANUEL'
+  // 060: 'OTOMATIK' yalnızca ÇIKIŞ satırlarında görülür (cron kapattı).
+  kaynak: 'IP' | 'KONUM' | 'MANUEL' | 'OTOMATIK'
   mesafe_m: number | null
   created_at: string
   profile?: { full_name: string } | null
@@ -113,7 +114,13 @@ export function useMesaiKisiKayitlari(
 
 /**
  * Who is currently clocked in — anyone whose latest event is a GIRIŞ.
- * Looks back a few days (the nightly auto-close keeps stale sessions out).
+ *
+ * Looks back a few days. 060'a kadar bu pencere bir AÇIKTI: hiçbir şey açık
+ * oturumu kapatmadığı için 3 günden eski unutulmuş bir oturum bu listeden
+ * sessizce düşerdi (raporda hâlâ açık görünürken). 060'ın otomatik kapatması
+ * hiçbir oturumun 14 saatten uzun açık kalmamasını garanti ediyor — ama
+ * YALNIZCA `businesses.mesai_bitis_saati` girilmiş işletmelerde. Ayar boşsa
+ * eski davranış (ve bu açık) aynen sürer.
  */
 export function useMesaiAcikOturumlar(businessId: string) {
   return useQuery({
@@ -154,6 +161,8 @@ export interface MesaiKonum {
   konum_lng: number | null
   konum_yaricap_m: number
   statik_ipler: string[]
+  // 060: kapanış saati ("HH:MM:SS" ya da null). null = otomatik kapatma KAPALI.
+  mesai_bitis_saati: string | null
 }
 
 export function useMesaiKonum(businessId: string) {
@@ -162,7 +171,7 @@ export function useMesaiKonum(businessId: string) {
     queryFn: async (): Promise<MesaiKonum> => {
       const { data, error } = await supabase
         .from('businesses')
-        .select('konum_lat, konum_lng, konum_yaricap_m, statik_ipler')
+        .select('konum_lat, konum_lng, konum_yaricap_m, statik_ipler, mesai_bitis_saati')
         .eq('id', businessId)
         .single()
       if (error) throw error
@@ -183,6 +192,7 @@ export function useSaveMesaiKonum() {
           konum_lng: input.konum_lng,
           konum_yaricap_m: input.konum_yaricap_m,
           statik_ipler: input.statik_ipler,
+          mesai_bitis_saati: input.mesai_bitis_saati,
         })
         .eq('id', input.businessId)
       if (error) throw error

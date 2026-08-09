@@ -27,6 +27,7 @@ const PREF_OF_TYPE: Record<string, string> = {
   KAYIT_SILME: 'silme',
   UYELIK: 'uyelik',
   KAYIT: 'kayit',
+  MESAI: 'mesai', // 060 — kapanış hatırlatması
 }
 
 Deno.serve(async (req) => {

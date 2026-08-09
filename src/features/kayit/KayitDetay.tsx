@@ -108,6 +108,22 @@ export default function KayitDetay() {
     setPhotoIndex((i) => Math.min(i, Math.max(0, fotograflar.length - 1)))
   }, [fotograflar.length])
 
+  // Lightbox klavye kısayolları (masaüstü): Esc kapatır, ←/→ gezinir.
+  // Sınırlar ok butonlarıyla BİREBİR aynı — taşma yok, başa dönme yok.
+  // NOT: bu effect aşağıdaki erken return'lerin (isPending/isError) ÜSTÜNDE
+  // durmalı, yoksa hook koşullu çağrılmış olur.
+  useEffect(() => {
+    if (!lightbox) return
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setLightbox(false)
+      else if (e.key === 'ArrowLeft') setPhotoIndex((i) => Math.max(0, i - 1))
+      else if (e.key === 'ArrowRight')
+        setPhotoIndex((i) => Math.min(fotograflar.length - 1, i + 1))
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [lightbox, fotograflar.length])
+
   if (isPending) {
     return (
       <div className="flex justify-center py-20 screen-forward">
@@ -845,7 +861,15 @@ export default function KayitDetay() {
 
       {/* Lightbox */}
       {lightbox && (
-        <div className="modal-backdrop fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/[.88]">
+        <div
+          className="modal-backdrop fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/[.88]"
+          // Yalnızca GERÇEKTEN koyu alana tıklanınca kapat. stopPropagation
+          // kullanılmıyor: bu kalıp okların/küçük resimlerin tıklamasını yutmaz
+          // (TxCard'ın klavye guard'ıyla aynı yaklaşım).
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setLightbox(false)
+          }}
+        >
           <button
             type="button"
             onClick={() => setLightbox(false)}
@@ -854,19 +878,66 @@ export default function KayitDetay() {
           >
             <XIcon size={14} />
           </button>
-          <div className="flex h-[300px] w-[calc(100%-40px)] max-w-[340px] items-center justify-center overflow-hidden rounded-[18px] bg-white">
-            {currentUrl ? (
-              <img src={currentUrl} alt="" className="h-full w-full object-contain" />
-            ) : (
-              <PhotoPlaceholderIcon size={52} strokeWidth={1.2} />
+
+          {/* Görsel + masaüstü okları. Mobil ölçüler AYNEN korunur; md: üstünde
+              çerçeve görsele göre büyür ve beyaz zemin kalkar (dikey fotoğrafın
+              iki yanındaki beyaz bantlar bu yüzden oluşuyordu). */}
+          {/* `w-full` MOBİLDE ŞART: çerçevenin w-[calc(100%-40px)]'i yüzdeyi bu
+              sarmalayıcıya göre hesaplıyor. Sarmalayıcı içerik kadar genişlerse
+              yüzde döngüsel olur ve tarayıcı görselin doğal katkısına göre DAR
+              bir değer çözer: 320 px'lik ekranda çerçeve 280 yerine 260 px
+              çıkıyor (ölçüldü) — taşma değil, sessiz bir küçülme. w-full ile
+              yüzde eskisi gibi viewport'a göre hesaplanır ve mobil çıktı birebir
+              korunur. Masaüstünde md:w-auto: sarmalayıcı görsele oturur, oklar
+              görselin kenarına yapışır. */}
+          <div className="relative flex w-full items-center justify-center md:w-auto">
+            <div
+              className={`flex h-[300px] w-[calc(100%-40px)] max-w-[340px] items-center justify-center overflow-hidden rounded-[18px] md:h-auto md:max-h-[72vh] md:w-auto md:max-w-[min(1000px,90vw)] ${
+                // Placeholder koyu zeminde görünmez olurdu → beyaz zemin
+                // yalnızca GÖRSEL varken kaldırılır.
+                currentUrl ? 'bg-white md:bg-transparent' : 'bg-white'
+              }`}
+            >
+              {currentUrl ? (
+                <img
+                  src={currentUrl}
+                  alt=""
+                  className="h-full w-full object-contain md:h-auto md:max-h-[72vh] md:w-auto md:max-w-[min(1000px,90vw)] md:rounded-[18px]"
+                />
+              ) : (
+                <PhotoPlaceholderIcon size={52} strokeWidth={1.2} />
+              )}
+            </div>
+
+            {fotograflar.length > 1 && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setPhotoIndex((i) => Math.max(0, i - 1))}
+                  aria-label="Önceki"
+                  className="absolute left-3 top-1/2 hidden h-10 w-10 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full bg-black/45 md:flex"
+                >
+                  <ArrowLeftSmall color="white" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPhotoIndex((i) => Math.min(fotograflar.length - 1, i + 1))}
+                  aria-label="Sonraki"
+                  className="absolute right-3 top-1/2 hidden h-10 w-10 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full bg-black/45 md:flex"
+                >
+                  <ArrowRightSmall color="white" />
+                </button>
+              </>
             )}
           </div>
+
+          {/* Sayaç her iki modda kalır; oklar masaüstünde yukarı taşındı */}
           <div className="mt-5 flex items-center gap-3">
             <button
               type="button"
               onClick={() => setPhotoIndex((i) => Math.max(0, i - 1))}
               aria-label="Önceki"
-              className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full bg-white/20"
+              className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full bg-white/20 md:hidden"
             >
               <ArrowLeftSmall color="white" />
             </button>
@@ -877,11 +948,41 @@ export default function KayitDetay() {
               type="button"
               onClick={() => setPhotoIndex((i) => Math.min(fotograflar.length - 1, i + 1))}
               aria-label="Sonraki"
-              className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full bg-white/20"
+              className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full bg-white/20 md:hidden"
             >
               <ArrowRightSmall color="white" />
             </button>
           </div>
+
+          {/* Filmstrip — yalnızca masaüstü. URL'ler zaten toplu imzalandığı için
+              (usePhotoUrls) ek istek doğurmaz. */}
+          {fotograflar.length > 1 && (
+            <div className="mt-4 hidden max-w-[min(1000px,90vw)] gap-2 overflow-x-auto px-1 py-1 md:flex">
+              {fotograflar.map((f, i) => {
+                const thumbUrl = photoUrls[f.storage_path] ?? null
+                const active = i === photoIndex
+                return (
+                  <button
+                    key={f.id}
+                    type="button"
+                    onClick={() => setPhotoIndex(i)}
+                    aria-label={`${i + 1}. fotoğraf`}
+                    aria-current={active}
+                    className="h-[54px] w-[74px] shrink-0 cursor-pointer overflow-hidden rounded-[8px] bg-white/10"
+                    style={{
+                      opacity: active ? 1 : 0.5,
+                      outline: active ? '2px solid #fff' : '2px solid transparent',
+                      outlineOffset: '-2px',
+                    }}
+                  >
+                    {thumbUrl && (
+                      <img src={thumbUrl} alt="" className="h-full w-full object-cover" />
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+          )}
         </div>
       )}
 

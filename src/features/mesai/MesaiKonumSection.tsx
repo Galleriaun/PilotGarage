@@ -1,7 +1,13 @@
 import { useEffect, useState } from 'react'
+import { KAPANIS_SAAT_OPTIONS, SaatDropdown, saatLabel } from '../kayit/components'
 import { mesaiSuAnkiIp, useMesaiKonum, useSaveMesaiKonum } from './api'
 
-/** Mesai konum/IP config card for İşletme Ayarları (finance). */
+/**
+ * Mesai config card for İşletme Ayarları.
+ *
+ * YÖNETİCİ-ONLY: 047 hem rotayı hem `businesses_update` politikasını
+ * `is_yonetici()`'ye daralttı (bundan önce finans geneliydi).
+ */
 export default function MesaiKonumSection({ businessId }: { businessId: string }) {
   const { data: konum } = useMesaiKonum(businessId)
   const save = useSaveMesaiKonum()
@@ -10,6 +16,8 @@ export default function MesaiKonumSection({ businessId }: { businessId: string }
   const [lng, setLng] = useState('')
   const [yaricap, setYaricap] = useState('300')
   const [ipler, setIpler] = useState('')
+  // 060: kapanış saati — boş = otomatik kapatma/hatırlatma kapalı
+  const [bitis, setBitis] = useState<string | null>(null)
   const [msg, setMsg] = useState('')
   const [geoMsg, setGeoMsg] = useState('')
   // bu cihazın sunucu tarafından görülen IP'si — tek dokunuşla listeye eklenir
@@ -32,6 +40,7 @@ export default function MesaiKonumSection({ businessId }: { businessId: string }
     setLng(konum.konum_lng != null ? String(konum.konum_lng) : '')
     setYaricap(String(konum.konum_yaricap_m ?? 300))
     setIpler((konum.statik_ipler ?? []).join(', '))
+    setBitis(konum.mesai_bitis_saati)
   }, [konum])
 
   const ipListesi = ipler
@@ -64,6 +73,17 @@ export default function MesaiKonumSection({ businessId }: { businessId: string }
 
   async function onSave() {
     setMsg('')
+    // Satır YÜKLENMEDEN kaydetme. Alanlar boş varsayılanlarla başlıyor ve
+    // hydrate effect'i `if (!konum) return` diyor — sorgu hata verirse ya da
+    // henüz dönmediyse form varsayılanlarda durur ve Kaydet, konumu/IP'leri
+    // SİLERDİ (yarıçap da 300'e dönerdi). O andan sonra hiç kimse giriş/çıkış
+    // yapamaz: mesai_giris_cikis "İşletme konumu ayarlanmamış" der.
+    // Somut senaryo: frontend, 060 migration'ından ÖNCE deploy edilirse
+    // `mesai_bitis_saati` kolonu yoktur, select komple hata verir.
+    if (!konum) {
+      setMsg('Ayarlar henüz yüklenmedi. Sayfayı yenileyin.')
+      return
+    }
     const latN = lat.trim() ? Number(lat) : null
     const lngN = lng.trim() ? Number(lng) : null
     const yaricapN = Number(yaricap)
@@ -90,6 +110,7 @@ export default function MesaiKonumSection({ businessId }: { businessId: string }
         konum_lng: lngN,
         konum_yaricap_m: yaricapN,
         statik_ipler: list,
+        mesai_bitis_saati: bitis,
       })
       setMsg('Kaydedildi ✓')
       setTimeout(() => setMsg(''), 2000)
@@ -103,15 +124,50 @@ export default function MesaiKonumSection({ businessId }: { businessId: string }
 
   return (
     <div>
-      <div className="mb-2 text-[11px] font-bold tracking-[0.6px] text-[#666]">
-        MESAI — KONUM & IP
-      </div>
-      <p className="mb-3 text-[12px] leading-relaxed text-muted">
-        Personelin giriş/çıkış yapabilmesi için işletme konumunu ve izin verilen mesafeyi ayarlayın.
-        İsteğe bağlı olarak ofis internetinin statik IP'sini ekleyin (o ağdaki personel konumsuz geçer).
-      </p>
+      <div className="mb-2 text-[11px] font-bold tracking-[0.6px] text-[#666]">MESAI</div>
 
       <div className="flex flex-col gap-2">
+        {/* 060: kapanış saati — özelliği açan anahtar olduğu için EN ÜSTTE */}
+        <div>
+          <div className="mb-[6px] text-[11px] font-bold tracking-[0.5px] text-faint">
+            MESAİ BİTİŞ SAATİ (KAPANIŞ)
+          </div>
+          <SaatDropdown
+            value={bitis}
+            onChange={setBitis}
+            placeholder="Yok (otomatik kapatma kapalı)"
+            options={KAPANIS_SAAT_OPTIONS}
+          />
+          <p className="mt-[6px] text-[11.5px] leading-relaxed text-faint">
+            {bitis ? (
+              <>
+                Kapanışta ({saatLabel(bitis)}) açık mesaisi olan personele hatırlatma gider,
+                5 dakika sonra oturumları otomatik kapatılır ve raporda{' '}
+                <span className="font-semibold">"Otomatik kapatıldı"</span> olarak işaretlenir.
+                Çalışmaya devam eden ya da gece vardiyasına kalan personel tekrar{' '}
+                <span className="font-semibold">Giriş</span> yapar; unutulan gece mesaisi 14 saat
+                sonra kendiliğinden kapanır.
+              </>
+            ) : (
+              <>
+                Boş bırakılırsa otomatik kapatma yapılmaz — çıkış yapmayı unutan personelin
+                oturumu açık kalır ve ertesi gün giriş yapamaz.
+              </>
+            )}
+          </p>
+        </div>
+
+        <div className="mt-1">
+          <div className="mb-[6px] text-[11px] font-bold tracking-[0.5px] text-faint">
+            KONUM & IP
+          </div>
+          <p className="text-[12px] leading-relaxed text-muted">
+            Personelin giriş/çıkış yapabilmesi için işletme konumunu ve izin verilen mesafeyi
+            ayarlayın. İsteğe bağlı olarak ofis internetinin statik IP'sini ekleyin (o ağdaki
+            personel konumsuz geçer).
+          </p>
+        </div>
+
         <div className="flex gap-2">
           <input
             type="text"
@@ -198,7 +254,7 @@ export default function MesaiKonumSection({ businessId }: { businessId: string }
         <button
           type="button"
           onClick={() => void onSave()}
-          disabled={save.isPending}
+          disabled={save.isPending || !konum}
           className="mt-1 w-full cursor-pointer rounded-[12px] bg-ink py-[11px] text-sm font-semibold text-white disabled:opacity-60"
         >
           {save.isPending ? 'Kaydediliyor…' : 'Mesai Ayarını Kaydet'}

@@ -4,11 +4,13 @@ import { useBusiness } from '../../app/providers/BusinessProvider'
 import { formatCreatedStamp } from '../../lib/dates'
 import { rpcErrorText } from '../../lib/errors'
 import { BackChevron } from '../auth/EyeIcon'
+import { saatLabel } from '../kayit/components'
 import {
   checkMesaiIp,
   mesaiGirisCikis,
   mesaiSuAnkiIp,
   useInvalidateMesai,
+  useMesaiKonum,
   useMyMesai,
 } from './api'
 
@@ -149,6 +151,8 @@ export default function Mesai() {
   const { activeBusiness } = useBusiness()
   const businessId = activeBusiness?.id ?? ''
   const { data: kayitlar = [] } = useMyMesai(businessId)
+  // 060: kapanış saati — businesses herkese okunur (businesses_select)
+  const { data: mesaiKonum } = useMesaiKonum(businessId)
   const invalidate = useInvalidateMesai()
 
   const [steps, setSteps] = useState<Step[]>([])
@@ -429,6 +433,17 @@ export default function Mesai() {
               : 'Giriş yaparak mesainizi başlatın'}
           </div>
         </div>
+
+        {/* 060: kapanışta otomatik kapatma sürpriz olmasın. Gece vardiyasının
+            resmî yolu da burada anlatılıyor — vardiya haftalık olduğu için bu
+            metin isteğe bağlı değil. */}
+        {mesaiKonum?.mesai_bitis_saati && (
+          <p className="mt-2 px-1 text-[11.5px] leading-relaxed text-muted">
+            Kapanışta ({saatLabel(mesaiKonum.mesai_bitis_saati)}) açık mesailer otomatik
+            kapatılır. Çalışmaya devam ediyorsanız ya da gece vardiyasındaysanız tekrar{' '}
+            <span className="font-semibold text-ink">Giriş</span> yapın.
+          </p>
+        )}
       </div>
 
       {/* Aksiyon */}

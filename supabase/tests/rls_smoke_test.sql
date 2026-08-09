@@ -5,7 +5,7 @@
 -- Everything happens inside one transaction that is ROLLED BACK at the
 -- end — no test data survives, safe to run on the live project.
 --
--- Prerequisite: migrations 001–057 applied. (Checks were written against
+-- Prerequisite: migrations 001–060 applied. (Checks were written against
 -- 001–013; the later migrations keep every asserted behavior — decided-row
 -- immutability now has RPC-only escape hatches that this file does not
 -- exercise, so all checks still pass unchanged.)
@@ -100,6 +100,9 @@ declare
   n bigint;
   v_izin uuid;   -- 048 İzinler
   v_izin2 uuid;
+  v_mesai_giris timestamptz; -- 060 mesai otomatik kapatma
+  v_mesai_cikis timestamptz;
+  v_kapanis_ts  timestamptz;
   v_sabit uuid;  -- 054 sabit gider (yöntem kopyalama)
   v_maas  uuid;  -- 054 born-ONAYLANDI maaş (değişmezlik kontrolü)
   v_durum text;
@@ -1986,6 +1989,197 @@ begin
   end;
 
   raise notice 'PASS 38: avans borcu — net maaş, 0 tutarlı işlem, devir, çifte ödeme yok (057)';
+
+  -- ── PASS 39: maaş borç düşümü kilidi + cron fonksiyonlarının kapalılığı (059) ──
+  -- NE SINANIR: 059'un GERÇEKTEN UYGULANDIĞI ve ileride birinin eski 057'yi
+  -- tekrar çalıştırıp kilidi sessizce düşürmediği. NE SINANMAZ: eşzamanlılığın
+  -- kendisi — gerçek yarış iki ayrı oturum ister, bu dosya ise tek işlem içinde
+  -- koşup rollback ediyor. Yani bu, "kilit var mı" kontrolüdür, "kilit işe
+  -- yarıyor mu" kontrolü değil; ikincisi ancak elle iki SQL oturumuyla denenir.
+
+  if to_regprocedure('public.pay_maas(uuid,uuid,public.odeme_yontemi)') is null then
+    raise exception 'FAIL: pay_maas(uuid,uuid,odeme_yontemi) imzası yok — 054/057 eksik olabilir';
+  end if;
+  if to_regprocedure('public.run_daily_materializer()') is null then
+    raise exception 'FAIL: run_daily_materializer() bulunamadı';
+  end if;
+
+  -- (a) her iki maaş yolunda da kilit duruyor mu
+  if pg_get_functiondef(to_regprocedure('public.pay_maas(uuid,uuid,public.odeme_yontemi)'))
+     not like '%pg_advisory_xact_lock%' then
+    raise exception 'FAIL: pay_maas advisory kilidi taşımıyor (059 uygulanmamış ya da ezilmiş)';
+  end if;
+  if pg_get_functiondef(to_regprocedure('public.run_daily_materializer()'))
+     not like '%pg_advisory_xact_lock%' then
+    raise exception 'FAIL: run_daily_materializer advisory kilidi taşımıyor (059 uygulanmamış ya da ezilmiş)';
+  end if;
+
+  -- (b) İKİSİ AYNI ANAHTARI kullanmalı. Anahtar bir yerde 'maas:' diğerinde
+  -- başka bir şey olsaydı kilit hiç çakışmaz, düzeltme sessizce ölürdü —
+  -- kaynakta görünmeyen, çalışırken de hata vermeyen bir hata sınıfı.
+  if pg_get_functiondef(to_regprocedure('public.pay_maas(uuid,uuid,public.odeme_yontemi)'))
+     not like '%hashtext(''maas:''%' then
+    raise exception 'FAIL: pay_maas kilit anahtarı ''maas:'' önekini taşımıyor (059)';
+  end if;
+  if pg_get_functiondef(to_regprocedure('public.run_daily_materializer()'))
+     not like '%hashtext(''maas:''%' then
+    raise exception 'FAIL: cron maaş kilidi ''maas:'' önekini taşımıyor — elle ödemeyle çakışmaz (059)';
+  end if;
+
+  -- (c) cron fonksiyonları istemciye kapalı (058 dersi: `from public` şart).
+  -- İkisinde de is_finance guard'ı yok/olamaz, tek koruma grant.
+  if has_function_privilege('authenticated', 'public.run_daily_materializer()', 'execute') then
+    raise exception 'FAIL: run_daily_materializer authenticated rolünden çağrılabiliyor (059)';
+  end if;
+  if has_function_privilege('authenticated', 'public.run_saat_transitions()', 'execute') then
+    raise exception 'FAIL: run_saat_transitions authenticated rolünden çağrılabiliyor (059)';
+  end if;
+
+  raise notice 'PASS 39: maaş borç kilidi yerinde, cron fonksiyonları istemciye kapalı (059)';
+
+  -- ── PASS 40: mesai otomatik kapatma + kapanış hatırlatması (060) ──
+  -- NOT: mesai_otomatik_kapat() CANLI veriyi de işler (gerçek personelin açık
+  -- oturumları da kapanır) — PASS 36(d)'deki materializer çağrısıyla aynı
+  -- durum; hepsi bu transaction'da kalır ve sonunda geri alınır. Test
+  -- kullanıcıları bu transaction'da doğduğu için hiç mesai satırları yok,
+  -- dolayısıyla tüm sayımlar kişiye dar tutulunca deterministiktir.
+  perform pg_temp.logout();
+
+  -- Kapanış 00:30 seçildi: "kapanış + 5 dk geçti" koşulu günün 23,5 saatinde
+  -- doğrudur, yani test neredeyse her an koşabilir. Yalnızca gece 00:00–00:40
+  -- arasında Kural 1 sınanamaz (aşağıdaki atlama), çünkü henüz kapanış+5
+  -- geçmemiştir. Kural 2 saat bağımsızdır ve her zaman koşar.
+  update businesses set mesai_bitis_saati = '00:30' where id = v_servis;
+  update businesses set mesai_bitis_saati = null    where id = v_galeri;
+
+  if (now() at time zone 'Europe/Istanbul')::time >= '00:40' then
+    v_mesai_giris := ((now() at time zone 'Europe/Istanbul')::date + time '00:10')
+                     at time zone 'Europe/Istanbul';
+    v_kapanis_ts  := ((now() at time zone 'Europe/Istanbul')::date + time '00:30')
+                     at time zone 'Europe/Istanbul';
+    insert into mesai_kayitlari (profile_id, business_id, tip, kaynak, ip, created_at)
+    values (u_personel, v_servis, 'GIRIS', 'KONUM', '', v_mesai_giris);
+
+    -- (a) hatırlatma: kapanıştan önce başlamış açık oturum → tek bildirim
+    perform mesai_hatirlatma();
+    select count(*) into n from notifications
+    where profile_id = u_personel and business_id = v_servis and type = 'MESAI';
+    if n <> 1 then
+      raise exception 'FAIL: kapanış hatırlatması tam 1 olmalıydı, got % (060)', n;
+    end if;
+    -- aynı gün ikinci kez gönderilmemeli (cron 5 dk'da bir koşuyor)
+    perform mesai_hatirlatma();
+    select count(*) into n from notifications
+    where profile_id = u_personel and business_id = v_servis and type = 'MESAI';
+    if n <> 1 then
+      raise exception 'FAIL: hatırlatma günde bir kez olmalıydı, got % (060)', n;
+    end if;
+
+    -- (b) KURAL 1: çıkış tam olarak kapanış saatinde, kaynak OTOMATIK
+    perform mesai_otomatik_kapat();
+    select count(*), min(created_at), min(kaynak::text)
+      into n, v_mesai_cikis, v_durum
+    from mesai_kayitlari
+    where profile_id = u_personel and business_id = v_servis and tip = 'CIKIS';
+    if n <> 1 then
+      raise exception 'FAIL: Kural 1 tam 1 çıkış üretmeliydi, got % (060)', n;
+    end if;
+    if v_durum <> 'OTOMATIK' then
+      raise exception 'FAIL: otomatik çıkışın kaynağı OTOMATIK olmalı, got % (060)', v_durum;
+    end if;
+    if v_mesai_cikis <> v_kapanis_ts then
+      raise exception 'FAIL: Kural 1 çıkışı kapanış saatinde olmalıydı (% beklendi), got % (060)',
+        v_kapanis_ts, v_mesai_cikis;
+    end if;
+
+    -- (c) idempotence: ikinci koşu yeni satır üretmez (son satır artık CIKIS)
+    perform mesai_otomatik_kapat();
+    select count(*) into n from mesai_kayitlari
+    where profile_id = u_personel and business_id = v_servis and tip = 'CIKIS';
+    if n <> 1 then
+      raise exception 'FAIL: ikinci koşu ikinci çıkış üretti, got % (060)', n;
+    end if;
+  else
+    raise notice '  (40a-c atlandı: Istanbul saati 00:40''tan erken — kapanış+5 henüz geçmedi)';
+  end if;
+
+  -- (d) KURAL 2 / GECE VARDİYASI: girişi kapanıştan sonra olan, 23 saatlik
+  -- oturum. Kural 1 buna DOKUNAMAZ (giriş bugün değil ya da kapanıştan sonra),
+  -- Kural 2 kapatır. Saatten bağımsız, her zaman koşar.
+  v_mesai_giris := now() - interval '23 hours';
+  insert into mesai_kayitlari (profile_id, business_id, tip, kaynak, ip, created_at)
+  values (u_muhasebe, v_servis, 'GIRIS', 'KONUM', '', v_mesai_giris);
+
+  perform mesai_otomatik_kapat();
+  select count(*), min(created_at), min(kaynak::text)
+    into n, v_mesai_cikis, v_durum
+  from mesai_kayitlari
+  where profile_id = u_muhasebe and business_id = v_servis and tip = 'CIKIS';
+  if n <> 1 then
+    raise exception 'FAIL: gece oturumu tam 1 çıkışla kapanmalıydı, got % (060)', n;
+  end if;
+  if v_durum <> 'OTOMATIK' then
+    raise exception 'FAIL: Kural 2 çıkışının kaynağı OTOMATIK olmalı, got % (060)', v_durum;
+  end if;
+  if v_mesai_cikis <> v_mesai_giris + interval '14 hours' then
+    raise exception 'FAIL: Kural 2 çıkışı giriş+14s olmalıydı, got % (060)', v_mesai_cikis;
+  end if;
+  -- ASIL KORUMA: ilk taslak burada 0 dakikalık oturum üretiyordu ve gece
+  -- vardiyası haftalık olduğu için bir gecelik emek DÜZENLİ olarak siliniyordu.
+  if v_mesai_cikis <= v_mesai_giris then
+    raise exception 'FAIL: otomatik çıkış girişten sonra olmalı (0 dakikalık oturum yasak) (060)';
+  end if;
+
+  -- (e) 14 saatten YENİ oturum erken kapatılmaz.
+  -- OFSET BİLEREK KÜÇÜK (2 dk): test kapanışı 00:30 olduğu için daha büyük bir
+  -- ofset sabahın erken saatlerinde girişi 00:00–00:30 aralığına düşürüp Kural
+  -- 1'i tetikleyebilirdi (ör. 2 saat ofsetle saat 02:15'te). 2 dk'da böyle bir
+  -- pencere yok: Kural 1 ayrıca `now >= kapanış + 5dk` istiyor.
+  insert into mesai_kayitlari (profile_id, business_id, tip, kaynak, ip, created_at)
+  values (u_yonetici, v_servis, 'GIRIS', 'KONUM', '', now() - interval '2 minutes');
+  perform mesai_otomatik_kapat();
+  if exists (
+    select 1 from mesai_kayitlari
+    where profile_id = u_yonetici and business_id = v_servis and tip = 'CIKIS'
+  ) then
+    raise exception 'FAIL: 14 saatten yeni gece oturumu erken kapatıldı (060)';
+  end if;
+
+  -- (f) kapanış saati GİRİLMEMİŞ işletmede hiçbir kural çalışmaz (Kural 2 dahil)
+  insert into mesai_kayitlari (profile_id, business_id, tip, kaynak, ip, created_at)
+  values (u_personel, v_galeri, 'GIRIS', 'KONUM', '', now() - interval '23 hours');
+  perform mesai_otomatik_kapat();
+  if exists (
+    select 1 from mesai_kayitlari
+    where profile_id = u_personel and business_id = v_galeri and tip = 'CIKIS'
+  ) then
+    raise exception 'FAIL: mesai_bitis_saati NULL iken oturum kapatıldı (060)';
+  end if;
+
+  -- (g) üst üste binen koşulara karşı kilit duruyor mu. Kilit düşerse iki
+  -- eşzamanlı tik aynı oturuma İKİ çıkış yazar / aynı push'u İKİ kez atar.
+  -- (Aynı transaction'da tekrar tekrar çağırmak sorun değil: advisory kilit
+  -- aynı oturum için re-entrant'tır, yukarıdaki idempotence testi bu yüzden
+  -- erken dönüşle değil GERÇEK sebeple geçiyor.)
+  if pg_get_functiondef(to_regprocedure('public.mesai_otomatik_kapat()'))
+     not like '%pg_try_advisory_xact_lock%' then
+    raise exception 'FAIL: mesai_otomatik_kapat çakışma kilidini taşımıyor (060)';
+  end if;
+  if pg_get_functiondef(to_regprocedure('public.mesai_hatirlatma()'))
+     not like '%pg_try_advisory_xact_lock%' then
+    raise exception 'FAIL: mesai_hatirlatma çakışma kilidini taşımıyor (060)';
+  end if;
+
+  -- (h) iki fonksiyon da istemciye kapalı — is_finance guard'ı YOK, tek koruma
+  -- grant. Açık kalsaydı personel mesaisini istediği saatte bitirebilirdi.
+  if has_function_privilege('authenticated', 'public.mesai_otomatik_kapat()', 'execute') then
+    raise exception 'FAIL: mesai_otomatik_kapat authenticated rolünden çağrılabiliyor (060)';
+  end if;
+  if has_function_privilege('authenticated', 'public.mesai_hatirlatma()', 'execute') then
+    raise exception 'FAIL: mesai_hatirlatma authenticated rolünden çağrılabiliyor (060)';
+  end if;
+
+  raise notice 'PASS 40: mesai otomatik kapatma (kapanış + maks süre), hatırlatma, yetki (060)';
 
   raise notice '';
   raise notice '=== ALL TESTS PASSED (rolling back — no test data persists) ===';

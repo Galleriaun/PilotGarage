@@ -19,21 +19,38 @@ export const SAAT_OPTIONS: string[] = Array.from({ length: 25 }, (_, i) => {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
 })
 
+/**
+ * 060: mesai kapanış saati için daha geniş liste (06:00–23:00).
+ * ÜST SINIR 23:00 BİLEREK: otomatik kapatma kapanış+5'te çalışır, 23:00 ile
+ * bu 23:05 eder ve gün sınırını hiç aşmaz.
+ */
+export const KAPANIS_SAAT_OPTIONS: string[] = Array.from({ length: 35 }, (_, i) => {
+  const mins = 6 * 60 + i * 30
+  const h = Math.floor(mins / 60)
+  const m = mins % 60
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+})
+
 /** "14:00:00" | "14:00" -> "14.00" */
 export function saatLabel(t: string): string {
   return t.slice(0, 5).replace(':', '.')
 }
 
 /** Başlangıç/bitiş saati picker — same expandable-button pattern as the
- *  other dropdowns; "Yok" clears the value. */
+ *  other dropdowns; "Yok" clears the value.
+ *  `options` verilmezse kayıt randevu dilimleri (SAAT_OPTIONS) kullanılır —
+ *  varsayılan sayesinde mevcut iki çağrı yeri (YeniKayit/KayitDetay) aynen
+ *  çalışmaya devam eder. */
 export function SaatDropdown({
   value,
   onChange,
   placeholder,
+  options = SAAT_OPTIONS,
 }: {
   value: string | null
   onChange: (v: string | null) => void
   placeholder: string
+  options?: string[]
 }) {
   const [open, setOpen] = useState(false)
   return (
@@ -64,7 +81,7 @@ export function SaatDropdown({
           >
             Yok
           </button>
-          {SAAT_OPTIONS.map((t) => {
+          {options.map((t) => {
             const selected = value?.slice(0, 5) === t
             return (
               <button

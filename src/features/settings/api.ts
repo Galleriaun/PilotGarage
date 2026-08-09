@@ -17,12 +17,14 @@ export interface NotifPrefs {
   silme?: boolean
   uyelik?: boolean
   kayit?: boolean
+  mesai?: boolean
 }
 export const PREF_OF_TYPE: Record<string, keyof NotifPrefs> = {
   ONAY: 'onay',
   KAYIT_SILME: 'silme',
   UYELIK: 'uyelik',
   KAYIT: 'kayit',
+  MESAI: 'mesai', // 060 — kapanış hatırlatması
 }
 export function wantsType(prefs: NotifPrefs, type: string): boolean {
   const key = PREF_OF_TYPE[type]

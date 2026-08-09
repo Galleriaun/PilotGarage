@@ -9,7 +9,14 @@ export interface Session {
   end: string | null // CIKIS created_at (null = ongoing)
   startDate: string // Istanbul YYYY-MM-DD of giriş
   durationMin: number | null // null while ongoing
-  kaynak: 'IP' | 'KONUM' | 'MANUEL'
+  kaynak: 'IP' | 'KONUM' | 'MANUEL' | 'OTOMATIK' // GİRİŞ satırının kaynağı
+  /**
+   * 060: oturumu cron kapattı (personel çıkış yapmayı unuttu).
+   *
+   * İşaret ÇIKIŞ satırındadır — `kaynak` ise GİRİŞ'ten gelir. Bu ayrı alan
+   * olmasaydı otomatik kapatma raporda HİÇ görünmezdi.
+   */
+  otomatikKapandi: boolean
 }
 
 export interface PersonSummary {
@@ -45,12 +52,14 @@ function makeSession(giris: MesaiKayit, cikis: MesaiKayit | null): Session {
     startDate: istanbulDateISO(giris.created_at),
     durationMin,
     kaynak: giris.kaynak,
+    otomatikKapandi: cikis?.kaynak === 'OTOMATIK',
   }
 }
 
 function kaynakLabel(kaynak: Session['kaynak']): string {
   if (kaynak === 'IP') return 'Ofis ağı'
   if (kaynak === 'MANUEL') return 'Manuel'
+  if (kaynak === 'OTOMATIK') return 'Otomatik'
   return 'Konum'
 }
 
@@ -152,6 +161,16 @@ export function PersonSessions({
                   <span className="font-semibold text-success">devam ediyor</span>
                 )}
                 <span className="text-[11px] text-faint">· {kaynakLabel(s.kaynak)}</span>
+                {/* 060: cron kapattı — süre toplama GİRER ama işaretli kalır,
+                    finans 030 RPC'leriyle gerçek saate çekebilsin */}
+                {s.otomatikKapandi && (
+                  <span
+                    className="shrink-0 rounded-[6px] px-[5px] py-[1px] text-[10px] font-bold"
+                    style={{ background: 'var(--seg)', color: 'var(--color-warn)' }}
+                  >
+                    Otomatik kapatıldı
+                  </span>
+                )}
                 <div className="flex-1" />
                 {s.durationMin != null && (
                   <span className="text-[12px] font-bold text-muted">{formatDuration(s.durationMin)}</span>

@@ -8,10 +8,14 @@ import { useNotifPrefs, useSaveProfile, type NotifPrefs } from './api'
 
 const PREF_ROWS: { key: keyof NotifPrefs; label: string; desc: string }[] = [
   { key: 'kayit', label: 'Yeni kayıtlar', desc: 'Yeni araç kaydı oluşturulduğunda' },
+  { key: 'mesai', label: 'Mesai hatırlatması', desc: 'Kapanışta mesainiz hâlâ açıksa' },
   { key: 'onay', label: 'Onay bekleyen işlemler', desc: 'Yeni işlem onaya düştüğünde' },
   { key: 'silme', label: 'Kayıt silme istekleri', desc: 'Bir kayıt için silme istendiğinde' },
   { key: 'uyelik', label: 'Üyelik başvuruları', desc: 'Yeni kullanıcı kaydolduğunda' },
 ]
+
+/** Her role üretilen bildirim tipleri (onay/silme/üyelik yalnızca Yöneticiye). */
+const HERKESE_ACIK_PREFS: (keyof NotifPrefs)[] = ['kayit', 'mesai']
 
 function Toggle({ on, onClick }: { on: boolean; onClick: () => void }) {
   return (
@@ -36,9 +40,12 @@ export default function Ayarlar() {
   const { profile, signOut } = useAuth()
   const profileId = profile?.id ?? ''
   // Onay/silme/üyelik bildirimleri yalnızca Yöneticiye üretilir (044/018) —
-  // diğer roller için bunlar ölü düğme olurdu, sadece "yeni kayıt" kalır.
+  // diğer roller için bunlar ölü düğme olurdu. Mesai hatırlatması (060) ise
+  // ASIL personele gider, o yüzden her rolde görünmeli.
   const prefRows =
-    profile?.role === 'YONETICI' ? PREF_ROWS : PREF_ROWS.filter((r) => r.key === 'kayit')
+    profile?.role === 'YONETICI'
+      ? PREF_ROWS
+      : PREF_ROWS.filter((r) => HERKESE_ACIK_PREFS.includes(r.key))
   const { data: prefs = {} } = useNotifPrefs(profileId)
   const save = useSaveProfile()
 
