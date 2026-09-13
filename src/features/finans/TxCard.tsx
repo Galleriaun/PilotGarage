@@ -1,6 +1,8 @@
+import { useAuth } from '../../app/providers/AuthProvider'
 import { formatCreatedStamp, formatRelativeDate } from '../../lib/dates'
 import { formatTL } from '../../lib/money'
 import type { OdemeYontemi } from '../../lib/types'
+import { maasTutariGizli } from './selectors'
 import { ODEME_YONTEMI_CHIP, ODEME_YONTEMI_LABELS, type Islem } from './types'
 
 function YontemChip({ y }: { y: OdemeYontemi }) {
@@ -148,6 +150,9 @@ export default function TxCard({
   // "kaynak → hedef" çift çipi. Yön ana bacağın yönteminden türetilir:
   // geri alma (042) ters yönde olduğu için çipler sabitlenemez.
   const transfer = islem.kaynak === 'TRANSFER'
+  // 063: maaş rakamı yalnızca Yöneticiye görünür (kural: maasTutariGizli)
+  const { profile } = useAuth()
+  const tutarGizli = maasTutariGizli(islem, profile?.role)
   const kaynakYontem: OdemeYontemi = islem.odeme_yontemi ?? 'NAKIT'
   const hedefYontem: OdemeYontemi = kaynakYontem === 'NAKIT' ? 'KREDI_KARTI' : 'NAKIT'
   const base =
@@ -225,7 +230,11 @@ export default function TxCard({
               : '#C62828',
         }}
       >
-        {transfer ? formatTL(islem.kurus) : amountLabel(islem)}
+        {transfer
+          ? formatTL(islem.kurus)
+          : tutarGizli
+            ? `${islem.tur === 'GELIR' ? '+' : '-'}••• ₺`
+            : amountLabel(islem)}
       </div>
       {onOnayaGonder && (
         <button

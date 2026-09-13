@@ -29,6 +29,7 @@ const Yonetim = lazy(() => import('./features/finans/Yonetim'))
 const Paketler = lazy(() => import('./features/yonetim/Paketler'))
 const PersonelList = lazy(() => import('./features/yonetim/PersonelList'))
 const PersonelDetay = lazy(() => import('./features/yonetim/PersonelDetay'))
+const PersonelDevreDisi = lazy(() => import('./features/yonetim/PersonelDevreDisi'))
 const PersonelIzinler = lazy(() => import('./features/yonetim/PersonelIzinler'))
 const Istekler = lazy(() => import('./features/yonetim/Istekler'))
 const Isletmeler = lazy(() => import('./features/yonetim/Isletmeler'))
@@ -84,6 +85,7 @@ export default function App() {
                     </Route>
                     <Route path="/yonetim/paketler" element={<Paketler />} />
                     <Route path="/yonetim/personel" element={<PersonelList />} />
+                    <Route path="/yonetim/personel/devre-disi" element={<PersonelDevreDisi />} />
                     <Route path="/yonetim/personel/:id" element={<PersonelDetay />} />
                     <Route path="/yonetim/personel/:id/izinler" element={<PersonelIzinler />} />
                     <Route path="/yonetim/isletmeler" element={<Isletmeler />} />

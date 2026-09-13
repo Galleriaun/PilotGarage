@@ -1,4 +1,5 @@
 import { istanbulTodayISO, monthRangeISO, shiftDaysISO } from '../../lib/dates'
+import type { Role } from '../../lib/types'
 import type { Islem, IslemTur } from './types'
 
 export type PeriodKey = 'TUMU' | 'BUGUN' | 'HAFTA' | 'AY'
@@ -100,6 +101,22 @@ export function onayaGeriGonderilebilir(i: Islem): boolean {
     i.sabit_gider_id == null &&
     i.tekrar_kural_id == null
   )
+}
+
+/**
+ * Maaş tutarı bu kullanıcıdan gizlenmeli mi? (063) — maaş rakamları yalnızca
+ * Yöneticiye görünür.
+ *
+ * Hatalı tarafı ucuz yöne kurulu (fail-closed): PERSONEL satırı yalnızca defter
+ * satırının AVANS/PRIM olduğu KESİNSE açılır. Defter satırı yoksa (çöpten geri
+ * alınmış işlem) ya da türü okunamıyorsa maaş sayılır. Sunucudaki delete_islem
+ * guard'ı aynı şekli uygular. Sınır yalnızca görünüm: tutar API'den okunabilir.
+ */
+export function maasTutariGizli(i: Islem, role: Role | null | undefined): boolean {
+  if (role === 'YONETICI') return false
+  if (i.kaynak !== 'PERSONEL') return false
+  const tur = i.personel_odeme?.[0]?.tur
+  return tur !== 'AVANS' && tur !== 'PRIM'
 }
 
 /**

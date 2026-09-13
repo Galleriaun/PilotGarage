@@ -66,8 +66,9 @@ export interface Islem {
    *  detayı) için. NULL = hareket/işletme silinmiş (015). */
   cari_hareket: { cari_isletme_id: string } | null
   /** PERSONEL kaynağının (avans/prim/maaş) personeli — 0 ya da 1 satır.
-   *  "Oluşturulduğu yere git" (personel detayı) için. */
-  personel_odeme: { profile_id: string }[]
+   *  "Oluşturulduğu yere git" (personel detayı) için; `tur` maaş tutarını
+   *  Yönetici dışından gizler (063). */
+  personel_odeme: { profile_id: string; tur: 'MAAS' | 'AVANS' | 'PRIM' }[]
 }
 
 export interface SabitGider {

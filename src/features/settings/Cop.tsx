@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
+import { useAuth } from '../../app/providers/AuthProvider'
 import { useBusiness } from '../../app/providers/BusinessProvider'
 import { formatCreatedStamp } from '../../lib/dates'
 import { BackChevron } from '../auth/EyeIcon'
@@ -18,11 +19,13 @@ const TYPE_LABELS: Record<string, string> = {
 
 export default function Cop() {
   const navigate = useNavigate()
+  const { profile } = useAuth()
   const { activeBusiness } = useBusiness()
   const { data: items = [], isPending } = useTrashItems(activeBusiness?.id ?? '')
   const restore = useRestoreTrash()
   const [busyId, setBusyId] = useState<string | null>(null)
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const isYonetici = profile?.role === 'YONETICI'
 
   async function onRestore(t: TrashItem) {
     setErrors((e) => ({ ...e, [t.id]: '' }))
@@ -72,38 +75,50 @@ export default function Cop() {
         </div>
       ) : (
         <div className="flex flex-col gap-2 px-6 pt-[18px]">
-          {items.map((t) => (
-            <div key={t.id} className="rounded-[16px] bg-card px-4 py-[13px]">
-              <div className="flex items-center gap-3">
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-bold text-ink">{t.title}</div>
-                  <div className="mt-[3px] flex items-center gap-2 text-[11px] text-faint">
-                    <span className="rounded-[6px] bg-[#EBEBEB] px-[7px] py-[2px] text-[10.5px] font-semibold text-[#555]">
-                      {TYPE_LABELS[t.item_type] ?? t.item_type}
-                    </span>
-                    <span className="truncate">
-                      {t.deleter?.full_name ?? '—'} • {formatCreatedStamp(t.deleted_at)}
-                    </span>
+          {items.map((t) => {
+            // 063: silinmiş personel ödemesi (maaş avans/primden ayırt edilemez)
+            // yalnızca Yöneticiye tutarıyla görünür ve yalnızca o geri alır —
+            // restore_trash da reddeder. Başlık tutarı içerdiği için payload'daki
+            // çıplak başlık gösterilir.
+            const personelGizli =
+              !isYonetici && t.item_type === 'ISLEM' && t.kaynak === 'PERSONEL'
+            return (
+              <div key={t.id} className="rounded-[16px] bg-card px-4 py-[13px]">
+                <div className="flex items-center gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-bold text-ink">
+                      {personelGizli ? t.baslik || 'Personel ödemesi' : t.title}
+                    </div>
+                    <div className="mt-[3px] flex items-center gap-2 text-[11px] text-faint">
+                      <span className="rounded-[6px] bg-[#EBEBEB] px-[7px] py-[2px] text-[10.5px] font-semibold text-[#555]">
+                        {TYPE_LABELS[t.item_type] ?? t.item_type}
+                      </span>
+                      <span className="truncate">
+                        {t.deleter?.full_name ?? '—'} • {formatCreatedStamp(t.deleted_at)}
+                      </span>
+                    </div>
                   </div>
+                  {!personelGizli && (
+                    <button
+                      type="button"
+                      onClick={() => void onRestore(t)}
+                      disabled={busyId === t.id}
+                      className="shrink-0 cursor-pointer rounded-[10px] bg-field px-3 py-[7px] text-[13px] font-semibold text-ink disabled:opacity-50"
+                    >
+                      {busyId === t.id ? '…' : 'Geri al'}
+                    </button>
+                  )}
+                  {/* Kalıcı "Sil" butonu owner kararıyla gizlendi (2026-07-16):
+                      trash_delete RLS'i ve useDeleteTrash duruyor — buton geri
+                      eklenerek özellik açılabilir. Liste zaten en yeni 50 ile
+                      sınırlı; eski öğeler kendiliğinden düşer. */}
                 </div>
-                <button
-                  type="button"
-                  onClick={() => void onRestore(t)}
-                  disabled={busyId === t.id}
-                  className="shrink-0 cursor-pointer rounded-[10px] bg-field px-3 py-[7px] text-[13px] font-semibold text-ink disabled:opacity-50"
-                >
-                  {busyId === t.id ? '…' : 'Geri al'}
-                </button>
-                {/* Kalıcı "Sil" butonu owner kararıyla gizlendi (2026-07-16):
-                    trash_delete RLS'i ve useDeleteTrash duruyor — buton geri
-                    eklenerek özellik açılabilir. Liste zaten en yeni 50 ile
-                    sınırlı; eski öğeler kendiliğinden düşer. */}
+                {errors[t.id] && (
+                  <p className="mt-2 text-[12px] text-danger">{errors[t.id]}</p>
+                )}
               </div>
-              {errors[t.id] && (
-                <p className="mt-2 text-[12px] text-danger">{errors[t.id]}</p>
-              )}
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
       <div className="h-10" />

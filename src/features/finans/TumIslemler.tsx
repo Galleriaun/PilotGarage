@@ -21,6 +21,7 @@ import {
   islemOrigin,
   isTransfer,
   isTransferEs,
+  maasTutariGizli,
   onayaGeriGonderilebilir,
   periodRange,
   type DateRange,
@@ -443,10 +444,15 @@ export default function TumIslemler() {
                 // işleme tıkla → oluşturulduğu yere git (kayıt/işletme/personel/
                 // sabit gider); kökeni olmayan (manuel/transfer) satırda kapalı
                 onOpen={origin ? () => void navigate(origin) : undefined}
-                onDelete={() => {
-                  setDialogError('')
-                  setDeleting(i)
-                }}
+                // 063: maaş satırını yalnızca Yönetici siler (delete_islem de reddeder)
+                onDelete={
+                  maasTutariGizli(i, profile?.role)
+                    ? undefined
+                    : () => {
+                        setDialogError('')
+                        setDeleting(i)
+                      }
+                }
                 // Aynı geri-ok butonu iki iş yapar (yalnızca Yönetici):
                 //  • TRANSFER  → Transferi Geri Al (ters yönde aktarım, 042);
                 //    zaten geri alınmışsa ve geri alma satırının kendisinde yok

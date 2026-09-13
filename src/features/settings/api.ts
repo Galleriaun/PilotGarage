@@ -38,6 +38,10 @@ export interface TrashItem {
   deleted_at: string
   /** NULL = system or deleted account. */
   deleter: { full_name: string } | null
+  /** 063: payload'dan — ISLEM öğesinde maaş tutarını gizlemek için. İşlem
+   *  dışı öğelerde null. (`title` tutarı içerir: trash_capture yazıyor.) */
+  kaynak: string | null
+  baslik: string | null
 }
 
 export function useBildirimler() {
@@ -138,7 +142,9 @@ export function useTrashItems(businessId: string) {
     queryFn: async (): Promise<TrashItem[]> => {
       const { data, error } = await supabase
         .from('trash')
-        .select('id,item_type,title,deleted_at,deleter:profiles!trash_deleted_by_fkey(full_name)')
+        .select(
+          'id,item_type,title,deleted_at,kaynak:payload->>kaynak,baslik:payload->>baslik,deleter:profiles!trash_deleted_by_fkey(full_name)',
+        )
         .eq('business_id', businessId)
         .order('deleted_at', { ascending: false })
       if (error) throw error

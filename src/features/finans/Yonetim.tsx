@@ -23,6 +23,7 @@ import {
 import {
   islemOrigin,
   isTransferEs,
+  maasTutariGizli,
   PERIOD_LABELS,
   PERIOD_SUBTITLES,
   periodRange,
@@ -113,7 +114,8 @@ export default function Yonetim() {
   const onayCount = pending.length + silmeTalepleri.length
   const { data: sabitGiderler = [] } = useSabitGiderler(businessId)
   const { data: tekrarKurallari = [] } = useTekrarKurallari(businessId)
-  const { data: maaslar = [] } = useMaasOdemeleri(businessId)
+  // 063: maaş rakamları yalnızca Yönetici — Muhasebe için hiç sorgulanmaz
+  const { data: maaslar = [] } = useMaasOdemeleri(isYonetici ? businessId : '')
 
   const [period, setPeriod] = useState<PeriodKey>('TUMU')
   const [widgetIndex, setWidgetIndex] = useState(0)
@@ -441,8 +443,10 @@ export default function Yonetim() {
                 />
               </div>
               <div className="w-full shrink-0 snap-start px-6 md:px-0">
+                {/* 063: maaş satırları Yönetici dışında kategori kırılımına girmez
+                    (tutar ve yüzde maaşı ele verirdi) */}
                 <SpendingCard
-                  islemler={islemler}
+                  islemler={islemler.filter((i) => !maasTutariGizli(i, profile?.role))}
                   year={currentYear}
                   selectedMonth={selectedMonth}
                 />

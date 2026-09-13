@@ -17,8 +17,9 @@ import type {
 // personel_odeme feed "işleme tıkla → oluşturulduğu yere git" (TxCard onOpen):
 // cari hareketin işletmesi ve avans/prim/maaş satırının personeli. Embed'ler
 // RLS'e tabidir; finans ekranlarında dolu gelir, kaynak uymayan satırlarda boş.
+// personel_odeme.tur (063): maaş tutarını Yönetici dışından gizler (maasTutariGizli).
 const ISLEM_SELECT =
-  '*, kategori:kategoriler(id,label,tur), creator:profiles!islemler_created_by_fkey(full_name), cari_hareket:cari_hareketler(cari_isletme_id), personel_odeme:personel_odemeler(profile_id)'
+  '*, kategori:kategoriler(id,label,tur), creator:profiles!islemler_created_by_fkey(full_name), cari_hareket:cari_hareketler(cari_isletme_id), personel_odeme:personel_odemeler(profile_id,tur)'
 
 function withKurus(rows: unknown[]): Islem[] {
   return (rows as Omit<Islem, 'kurus'>[]).map((r) => ({

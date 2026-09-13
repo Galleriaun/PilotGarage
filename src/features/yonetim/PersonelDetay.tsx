@@ -233,6 +233,9 @@ export default function PersonelDetay() {
   const businessId = activeBusiness?.id ?? ''
   const isYonetici = me?.role === 'YONETICI'
   const isSelf = me?.id === id
+  // 063: maaş rakamı, düzenleme ve Maaş Öde yalnızca Yönetici — kendi maaşı dahil.
+  // Sınır sunucuda (pay_maas / update_member_pay); bu yalnızca görünüm.
+  const maasGorunur = isYonetici
 
   const { data: member, isPending, isError } = useMember(id, businessId)
   const { data: odemeler = [] } = usePersonelOdemeler(id, businessId)
@@ -535,10 +538,13 @@ export default function PersonelDetay() {
 
   return (
     <div className="screen-forward">
+      {/* Geri kişinin listelendiği ekrana döner: devre dışıysa Devre Dışı ekranı */}
       <div className="px-6 pt-4">
         <button
           type="button"
-          onClick={() => void navigate('/yonetim/personel')}
+          onClick={() =>
+            void navigate(disabled ? '/yonetim/personel/devre-disi' : '/yonetim/personel')
+          }
           className="inline-flex cursor-pointer items-center gap-1 py-[6px]"
         >
           <BackChevron />
@@ -599,19 +605,23 @@ export default function PersonelDetay() {
           <div className="mb-3 text-[11px] font-bold tracking-[0.6px] text-faint">
             {gun > 0 ? `DÖNEM: ${formatDateDots(cycleStart)} →` : monthLabel}
           </div>
-          <div className="mb-[2px] flex items-center justify-between">
-            <span className="text-[13px] text-muted">Maaş</span>
-            <button
-              type="button"
-              onClick={() => setEditOpen((v) => !v)}
-              className="cursor-pointer text-[13px] font-bold text-success"
-            >
-              {editOpen ? 'Kapat' : 'Düzenle'}
-            </button>
-          </div>
-          <div className="text-[25px] font-bold tracking-[-0.5px] text-ink">
-            {formatTL(current.maasKurus, { decimals: 2 })}
-          </div>
+          {maasGorunur && (
+            <>
+              <div className="mb-[2px] flex items-center justify-between">
+                <span className="text-[13px] text-muted">Maaş</span>
+                <button
+                  type="button"
+                  onClick={() => setEditOpen((v) => !v)}
+                  className="cursor-pointer text-[13px] font-bold text-success"
+                >
+                  {editOpen ? 'Kapat' : 'Düzenle'}
+                </button>
+              </div>
+              <div className="text-[25px] font-bold tracking-[-0.5px] text-ink">
+                {formatTL(current.maasKurus, { decimals: 2 })}
+              </div>
+            </>
+          )}
           {cyclePrimKurus > 0 && (
             <div className="mt-[2px] text-[13px] font-bold text-success">
               +{formatTL(cyclePrimKurus)} prim
@@ -671,17 +681,20 @@ export default function PersonelDetay() {
                 </div>
               )}
             </div>
-            <div className="min-w-0 flex-1">
-              <div className="mb-[5px] text-xs text-muted">Kalan (ödenecek)</div>
-              <div className="text-lg font-bold text-success">
-                {formatTL(kalanKurus, { decimals: 2 })}
+            {/* maaş − borç, maaşı ele verir → yalnızca Yönetici */}
+            {maasGorunur && (
+              <div className="min-w-0 flex-1">
+                <div className="mb-[5px] text-xs text-muted">Kalan (ödenecek)</div>
+                <div className="text-lg font-bold text-success">
+                  {formatTL(kalanKurus, { decimals: 2 })}
+                </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
 
         {/* Düzenleme kartı */}
-        {editOpen && (
+        {editOpen && maasGorunur && (
           <div className="menu-in flex flex-col gap-4 rounded-[18px] border border-[#EDEDED] bg-white p-[18px] shadow-[0_1px_2px_rgba(0,0,0,0.03),0_4px_12px_rgba(0,0,0,0.04)]">
             <div>
               <div className="mb-2 text-[11px] font-bold tracking-[0.6px] text-faint">
@@ -815,26 +828,28 @@ export default function PersonelDetay() {
           />
         </div>
 
-        {/* Maaş geçmişi */}
-        <div>
-          <div className="mb-2 flex items-center justify-between">
-            <div className="text-[11px] font-bold tracking-[0.6px] text-faint">MAAŞ GEÇMİŞİ</div>
-            <button
-              type="button"
-              onClick={() => setConfirmMaas(true)}
-              disabled={current.maasKurus <= 0}
-              className="cursor-pointer rounded-[10px] bg-field px-3 py-[7px] text-[13px] font-semibold text-ink disabled:opacity-50"
-            >
-              Maaş Öde
-            </button>
+        {/* Maaş geçmişi — tutarlar maaşın kendisi, Maaş Öde de burada */}
+        {maasGorunur && (
+          <div>
+            <div className="mb-2 flex items-center justify-between">
+              <div className="text-[11px] font-bold tracking-[0.6px] text-faint">MAAŞ GEÇMİŞİ</div>
+              <button
+                type="button"
+                onClick={() => setConfirmMaas(true)}
+                disabled={current.maasKurus <= 0}
+                className="cursor-pointer rounded-[10px] bg-field px-3 py-[7px] text-[13px] font-semibold text-ink disabled:opacity-50"
+              >
+                Maaş Öde
+              </button>
+            </div>
+            <OdemeList
+              items={maaslar}
+              empty="Henüz maaş ödemesi yapılmadı."
+              fallback="Maaş Ödemesi"
+              positive
+            />
           </div>
-          <OdemeList
-            items={maaslar}
-            empty="Henüz maaş ödemesi yapılmadı."
-            fallback="Maaş Ödemesi"
-            positive
-          />
-        </div>
+        )}
 
         {saveError && <p className="text-center text-sm text-danger">{saveError}</p>}
 
@@ -1142,7 +1157,7 @@ export default function PersonelDetay() {
 
       {/* Maaş öde onayı */}
       <ConfirmDialog
-        open={confirmMaas}
+        open={confirmMaas && maasGorunur}
         title="Maaş ödemesi"
         message={`${member.profile.full_name || 'Bu kişi'} için ${formatTL(saved.maasKurus)} maaş ödemesi yapılsın mı? Tutar onay beklemeden kasaya gider olarak işlenir.`}
         confirmLabel="Öde"

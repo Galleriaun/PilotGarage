@@ -106,6 +106,8 @@ declare
   v_gece_ts     timestamptz; -- 061 gece vardiyası bitiş anı
   v_sabit uuid;  -- 054 sabit gider (yöntem kopyalama)
   v_maas  uuid;  -- 054 born-ONAYLANDI maaş (değişmezlik kontrolü)
+  v_trash uuid;  -- 063 çöp geri alma (maaş / Mesai)
+  v_mesai uuid;  -- 063 çöpten geri alınan Mesai kaydı
   v_durum text;
   gelir_before numeric;
   gider_before numeric;
@@ -1225,7 +1227,7 @@ begin
   -- maaş DEĞİŞMEDİ: born-ONAYLANDI, Onay'a hiç düşmez
   update business_members set maas = 500.00
   where profile_id = u_personel and business_id = v_servis;
-  perform pg_temp.login(u_muhasebe);
+  perform pg_temp.login(u_yonetici); -- 063: maaş yalnızca Yönetici
   select pay_maas(u_personel, v_servis) into v_islem_c2; -- maaşı üyelikten okur
   perform pg_temp.logout();
   select durum::text into v_durum from islemler where id = v_islem_c2;
@@ -1735,6 +1737,9 @@ begin
 
   -- (b) maaş kovası KİŞİDEN okunur: update_member_pay yazar, pay_maas kopyalar.
   -- odeme_gunu = 0 (elle ödeme) → aşağıdaki materializer bu kişiye maaş açmaz.
+  -- 063: maaş tanımı ve ödemesi yalnızca Yönetici — (c) için Muhasebe'ye dönülür.
+  perform pg_temp.logout();
+  perform pg_temp.login(u_yonetici);
   perform update_member_pay(u_personel, v_servis, 3000.00, 0, 'KREDI_KARTI');
   if (select odeme_yontemi from business_members
       where profile_id = u_personel and business_id = v_servis) <> 'KREDI_KARTI' then
@@ -1754,6 +1759,8 @@ begin
       where profile_id = u_personel and business_id = v_servis) is not null then
     raise exception 'FAIL: maaş yöntemi temizlenemedi (054)';
   end if;
+  perform pg_temp.logout();
+  perform pg_temp.login(u_muhasebe);
 
   -- (c) cari: yöntem harekette saklanır ve işleme kopyalanır
   select topla_cari_odeme(v_cari, 40.00, 'Yöntemli tahsilat', 'NAKIT') into v_islem_c2;
@@ -1887,7 +1894,12 @@ begin
   end;
 
   -- (b) maaşın ALTINDA avans → maaş NET öder, borç kapanır
+  -- 063: maaş tanımı ve ödemesi yalnızca Yönetici (u_muhasebe yalnızca HEDEF kişi)
+  perform pg_temp.logout();
+  perform pg_temp.login(u_yonetici);
   perform update_member_pay(u_muhasebe, v_servis, 1000.00, 0, 'NAKIT');
+  perform pg_temp.logout();
+  perform pg_temp.login(u_muhasebe);
   select give_avans(u_muhasebe, v_servis, 400.00, '057 avans', 'NAKIT') into v_islem_c1;
   perform pg_temp.logout();
   -- Onay bekleyen avans borcu ETKİLEMEZ (kasadan henüz çıkmadı)
@@ -1901,7 +1913,7 @@ begin
     raise exception 'FAIL: onaylı avans borcu 400 olmalı (057)';
   end if;
 
-  perform pg_temp.login(u_muhasebe);
+  perform pg_temp.login(u_yonetici); -- 063: maaş yalnızca Yönetici
   select pay_maas(u_muhasebe, v_servis) into v_maas;
   perform pg_temp.logout();
   select tutar into gider_after from islemler where id = v_maas;
@@ -1927,7 +1939,7 @@ begin
   perform approve_islem(v_islem_c2, null);
   perform pg_temp.logout();
 
-  perform pg_temp.login(u_muhasebe);
+  perform pg_temp.login(u_yonetici); -- 063: maaş yalnızca Yönetici
   select pay_maas(u_muhasebe, v_servis) into v_maas;
   perform pg_temp.logout();
   select tutar into gider_after from islemler where id = v_maas;
@@ -1940,7 +1952,7 @@ begin
   end if;
 
   -- (d) sonraki dönem devreden borcu düşer
-  perform pg_temp.login(u_muhasebe);
+  perform pg_temp.login(u_yonetici); -- 063: maaş yalnızca Yönetici
   select pay_maas(u_muhasebe, v_servis) into v_maas;
   perform pg_temp.logout();
   select tutar into gider_after from islemler where id = v_maas;
@@ -2445,6 +2457,115 @@ begin
   end if;
 
   raise notice 'PASS 41: gece = sabit 6 saat (gece yarısı sonrası + devam oturumu dahil), gündüz kapanışta, ayar kaldırıldı (062)';
+
+
+  -- ═══ 42) 063: maaş yalnızca Yönetici + çöpten Mesai geri alma ═══
+  -- Retler mesajıyla doğrulanır: başka bir sebeple patlayan çağrı (ör. maaş 0)
+  -- guard eksikken de "reddedildi" görünüp sahte geçerdi.
+
+  -- (a) Muhasebe maaş tanımını değiştiremez, maaş ödeyemez
+  select maas::text || '/' || odeme_gunu::text || '/' || coalesce(odeme_yontemi::text, 'NULL')
+    into v_durum from business_members
+  where profile_id = u_personel and business_id = v_servis;
+  perform pg_temp.login(u_muhasebe);
+  begin
+    perform update_member_pay(u_personel, v_servis, 1.00, 5, 'NAKIT');
+    raise exception 'FAIL: Muhasebe maaş tanımını değiştirebildi (063)';
+  exception when others then
+    if sqlerrm like 'FAIL:%' then raise; end if;
+    if sqlerrm not like '%yalnızca Yöneticidedir%' then
+      raise exception 'FAIL: update_member_pay yanlış sebeple reddedildi: % (063)', sqlerrm;
+    end if;
+  end;
+  begin
+    perform pay_maas(u_personel, v_servis);
+    raise exception 'FAIL: Muhasebe maaş ödeyebildi (063)';
+  exception when others then
+    if sqlerrm like 'FAIL:%' then raise; end if;
+    if sqlerrm not like '%yalnızca Yöneticidedir%' then
+      raise exception 'FAIL: pay_maas yanlış sebeple reddedildi: % (063)', sqlerrm;
+    end if;
+  end;
+  perform pg_temp.logout();
+  if (select maas::text || '/' || odeme_gunu::text || '/' || coalesce(odeme_yontemi::text, 'NULL')
+      from business_members
+      where profile_id = u_personel and business_id = v_servis) <> v_durum then
+    raise exception 'FAIL: reddedilen update_member_pay üyeliği değiştirdi (063)';
+  end if;
+
+  -- (b) Yönetici öder; Muhasebe o maaş işlemini SİLEMEZ (avans/prim silmesi
+  -- PASS 28 ve 38(f)'de hâlâ Muhasebe ile sınanıyor)
+  perform pg_temp.login(u_yonetici);
+  select pay_maas(u_personel, v_servis) into v_maas;
+  perform pg_temp.logout();
+  perform pg_temp.login(u_muhasebe);
+  begin
+    perform delete_islem(v_maas);
+    raise exception 'FAIL: Muhasebe maaş işlemini silebildi (063)';
+  exception when others then
+    if sqlerrm like 'FAIL:%' then raise; end if;
+    if sqlerrm not like '%yalnızca Yöneticidedir%' then
+      raise exception 'FAIL: delete_islem yanlış sebeple reddedildi: % (063)', sqlerrm;
+    end if;
+  end;
+  perform pg_temp.logout();
+  if not exists (select 1 from islemler where id = v_maas)
+     or not exists (select 1 from personel_odemeler where islem_id = v_maas and tur = 'MAAS') then
+    raise exception 'FAIL: reddedilen silme maaş işlemini ya da defter satırını götürdü (063)';
+  end if;
+
+  -- (c) Yönetici siler → çöp; Muhasebe geri ALAMAZ, Yönetici alır
+  -- trash_cap işletme başına en yeni 50'yi deleted_at'e göre tutar; bu testin
+  -- ürettiği çöp satırlarının HEPSİ aynı now()'a sahip. 50'yi aşarlarsa eşitlik
+  -- keyfi bozulur ve aşağıdaki taze satır eklenir eklenmez budanabilirdi.
+  -- Yalnızca bu transaction'ın satırları silinir (canlı satırlar daha eski).
+  delete from trash where business_id = v_servis and deleted_at = now();
+  perform pg_temp.login(u_yonetici);
+  perform delete_islem(v_maas);
+  perform pg_temp.logout();
+  select id into v_trash from trash
+  where item_type = 'ISLEM' and payload->>'id' = v_maas::text;
+  if v_trash is null then
+    raise exception 'FAIL: silinen maaş işlemi çöpe düşmedi (063)';
+  end if;
+  perform pg_temp.login(u_muhasebe);
+  begin
+    perform restore_trash(v_trash);
+    raise exception 'FAIL: Muhasebe silinmiş maaş işlemini geri alabildi (063)';
+  exception when others then
+    if sqlerrm like 'FAIL:%' then raise; end if;
+    if sqlerrm not like '%yalnızca Yöneticidedir%' then
+      raise exception 'FAIL: restore_trash yanlış sebeple reddedildi: % (063)', sqlerrm;
+    end if;
+  end;
+  perform pg_temp.logout();
+  perform pg_temp.login(u_yonetici);
+  perform restore_trash(v_trash);
+  perform pg_temp.logout();
+  if not exists (select 1 from islemler where id = v_maas) then
+    raise exception 'FAIL: Yönetici silinmiş maaş işlemini geri alamadı (063)';
+  end if;
+
+  -- (d) 039 restore_trash'ten MESAI dalını düşürmüştü — 063 geri koydu
+  insert into mesai_kayitlari (profile_id, business_id, tip, kaynak, ip, created_at)
+  values (u_personel, v_servis, 'GIRIS', 'KONUM', '', now() - interval '1 hour')
+  returning id into v_mesai;
+  perform pg_temp.login(u_muhasebe);
+  perform mesai_kayit_sil(v_mesai);
+  perform pg_temp.logout();
+  select id into v_trash from trash
+  where item_type = 'MESAI' and payload->>'id' = v_mesai::text;
+  if v_trash is null then
+    raise exception 'FAIL: silinen Mesai kaydı çöpe düşmedi (030)';
+  end if;
+  perform pg_temp.login(u_muhasebe);
+  perform restore_trash(v_trash);
+  perform pg_temp.logout();
+  if not exists (select 1 from mesai_kayitlari where id = v_mesai) then
+    raise exception 'FAIL: çöpten Mesai kaydı geri alınamadı (063)';
+  end if;
+
+  raise notice 'PASS 42: maaş yalnızca Yönetici — öde / düzenle / sil / geri al; çöpten Mesai geri alma (063)';
 
   raise notice '';
   raise notice '=== ALL TESTS PASSED (rolling back — no test data persists) ===';

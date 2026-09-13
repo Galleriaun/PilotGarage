@@ -56,7 +56,8 @@ Three fixed roles (design role picker) plus one implicit lifecycle state:
 | **İstekler** (avans/şikayet/öneri — see *and* decide) | own only | ❌ | ✅ |
 | İşletmeler (cari hesap) + hareket + yansıt | ❌ | ✅ | ✅ |
 | Paket & Fiyatlar management | ❌ | ✅ | ✅ |
-| Personel management (roster, maaş, avans) | ❌ | ✅ | ✅ |
+| Personel management (roster, avans, prim) | ❌ | ✅ | ✅ |
+| **Maaş** (see amounts, edit maaş / ödeme günü, Maaş Öde, delete or restore a maaş işlem) | ❌ | ❌ (ödeme günü read-only) | ✅ |
 | **İzinler** (yıllık izin ekle/sil) | ❌ | Personel hedefler | ✅ herkes |
 | **Rol Değiştir** (change a user's role) | ❌ | ❌ | ✅ |
 | **İşletme Erişimi** (grant/revoke business access) | ❌ | ❌ | ✅ |
@@ -71,7 +72,8 @@ Three fixed roles (design role picker) plus one implicit lifecycle state:
 - **İstekler are Yönetici-only, including visibility** (046, 2026-07-21): Muhasebe cannot read the `istekler` table at all, not merely the screen — a şikayet may be about the Muhasebe. Staff still file their own and see them under İsteklerim.
 - **İzinler are tiered** (048, 2026-07-21): Muhasebe adds/deletes leave only for PERSONEL-role members; Yönetici for everyone. The target's role is checked in RLS (`izin_yazabilir`, SECURITY DEFINER), not just the UI. Reads are finance-wide so the "İzinde" badge renders everywhere.
 - **İşletme Ayarları is Yönetici-only** (047, 2026-07-21): the `businesses` UPDATE policy and `kategoriler` INSERT/UPDATE policies require Yönetici — name/telefon/adres, mesai konum + ofis IP'leri, and kategori add/soft-delete. Reads are untouched (Muhasebe still reads kategoriler for the Gelir/Gider picker and reports).
-- Muhasebe uses the Yönetici bottom nav and the Yönetim Menü; role controls (Rol Değiştir, signup approval), Onay, İstekler and İşletme Ayarları are hidden.
+- **Maaş is Yönetici-only** (063, 2026-09-13): `pay_maas` and `update_member_pay` require Yönetici; `delete_islem` and `restore_trash` refuse Muhasebe on salary işlemler. Both are fail-closed: a PERSONEL işlem counts as maaş unless its ledger row is provably avans/prim, and restore can't tell them apart after deletion, so it refuses every deleted PERSONEL işlem. Muhasebe still sees the ödeme günü but no salary amounts — list, detail, salary rows (`-••• ₺`), the salary lines of the reports and Çöp titles are masked. **The mask is UI-only:** kasa totals still include salaries (owner decision) and the API still returns the figures to a Muhasebe session.
+- Muhasebe uses the Yönetici bottom nav and the Yönetim Menü; role controls (Rol Değiştir, signup approval), Onay, İstekler, İşletme Ayarları and salary amounts / Maaş Öde are hidden.
 - **Yönetici decides per user which business(es) they see** — PilotGarage only, Arabam.com only, or both — via an **İşletme Erişimi** selector in Personel Detay (owner decision 2026-07-07; this control is an addition to the design prototype, which has none).
 - Business switching: Yönetici switches freely (İşletme Seç + in-app switcher); Personel/Muhasebe assigned to one business skip İşletme Seç entirely; if assigned to both, they get the picker too. Last choice remembered in `localStorage`.
 
@@ -196,7 +198,7 @@ Turkey is UTC+3 year-round (no DST since 2016). `pg_cron` runs in UTC → the da
 - **A01 Broken Access Control:** RLS deny-by-default on every table; NULL-role/pending user gets zero rows (explicitly tested); role, status, and business access writable only through Yönetici-gated RPCs; storage paths business-scoped; every policy re-verified when a feature touches it.
 - **A02 Security Misconfiguration:** automatic-RLS event trigger enabled on the Supabase project; storage bucket private; signups gated by approval (§4); auth Site URL + redirect allowlist configured; secret key never in the client bundle (grep `dist/` pre-launch).
 - **A03 Software Supply Chain Failures:** exact-pinned dependency versions + committed lockfile; `npm audit` (production deps, high+) blocks CI; GitHub Actions pinned by version; deploys only from `main` on GitHub-hosted runners.
-- **A04 Cryptographic Failures:** TLS end to end (Pages + Supabase); no sensitive plaintext beyond operational need; salaries readable only by Yönetici/Muhasebe within business scope; no custom crypto.
+- **A04 Cryptographic Failures:** TLS end to end (Pages + Supabase); no sensitive plaintext beyond operational need; salaries readable only by Yönetici/Muhasebe within business scope (063: salary writes are Yönetici-only in the RPCs; amounts are hidden from Muhasebe in the UI, not in the database); no custom crypto.
 - **A05 Injection:** supabase-js parameterization; no string-built SQL in RPCs (`set search_path = public` on every `SECURITY DEFINER` function); React auto-escaping, no `dangerouslySetInnerHTML`; CSV formula-injection guard if exports are added later.
 - **A06 Insecure Design:** the finance invariants are *designed into* Postgres — Onay state machine, immutable decided rows, derived-only balances, counter-entry corrections — so no client bug can corrupt the kasa.
 - **A07 Authentication Failures:** Supabase Auth (PKCE) sessions; 8+ char passwords; auth rate limits on; `DISABLED` cuts access at the next request via RLS, not just the UI.

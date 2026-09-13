@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { useBusiness } from '../../app/providers/BusinessProvider'
-import { formatTL, numericStringToKurus, parseTLToKurus } from '../../lib/money'
+import { parseTLToKurus } from '../../lib/money'
 import type { Profile, Role } from '../../lib/types'
 import {
   useAktifIzinProfilleri,
@@ -11,7 +11,8 @@ import {
   useMembers,
   usePendingProfiles,
 } from './api'
-import { ROLE_LABELS, ROLE_OPTIONS, type IstekTur } from './types'
+import { ChevronRightSm, MemberRow } from './MemberRow'
+import { ROLE_OPTIONS, type IstekTur } from './types'
 import {
   Avatar,
   FormModal,
@@ -21,24 +22,6 @@ import {
   modalFieldLabel,
   modalInputCls,
 } from './shared'
-
-function ChevronRightSm() {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="#ADADAD"
-      strokeWidth="2.2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className="shrink-0"
-    >
-      <polyline points="9 18 15 12 9 6" />
-    </svg>
-  )
-}
 
 function ApproveSignupModal({
   profile,
@@ -186,7 +169,11 @@ export default function PersonelList() {
   const businessId = activeBusiness?.id ?? ''
   const isYonetici = me?.role === 'YONETICI'
 
-  const { data: members = [], isPending } = useMembers(businessId)
+  const { data: members = [], isPending, isError } = useMembers(businessId)
+  // Devre dışılar ayrı ekranda (/yonetim/personel/devre-disi). `!== 'DISABLED'`
+  // bilerek: beklenmeyen bir durum değeri gizlenmez, burada kalır.
+  const aktifler = members.filter((m) => m.profile.status !== 'DISABLED')
+  const devreDisiSayisi = members.length - aktifler.length
   // 048: bugün izinde olanlar — kartta turuncu "İzinde" rozeti
   const { data: izindekiler = new Set<string>() } = useAktifIzinProfilleri(businessId)
   const { data: pendingProfiles = [] } = usePendingProfiles(isYonetici)
@@ -291,57 +278,56 @@ export default function PersonelList() {
         <div className="flex justify-center py-14">
           <div className="h-5 w-5 animate-spin rounded-full border-2 border-divider border-t-ink" />
         </div>
-      ) : members.length === 0 ? (
+      ) : isError ? (
+        // sessiz boş liste "personel yok" dedirtmesin
+        <div
+          className="px-6 py-12 text-center text-sm font-semibold"
+          style={{ color: 'var(--danger-on-soft)' }}
+        >
+          Personel yüklenemedi.
+        </div>
+      ) : aktifler.length === 0 ? (
         <div className="flex flex-col items-center px-6 py-12 text-center">
           <div className="mb-[14px] flex h-[52px] w-[52px] items-center justify-center rounded-[16px] bg-field">
             <UsersIcon color="#ADADAD" size={24} />
           </div>
-          <div className="mb-1 text-[15px] font-bold text-ink">Henüz personel yok</div>
+          <div className="mb-1 text-[15px] font-bold text-ink">
+            {members.length === 0 ? 'Henüz personel yok' : 'Aktif personel yok'}
+          </div>
           <div className="text-[13px] text-muted">
-            Kayıt olan kullanıcılar onaylandığında burada görünür.
+            {members.length === 0
+              ? 'Kayıt olan kullanıcılar onaylandığında burada görünür.'
+              : 'Tüm kullanıcılar devre dışı.'}
           </div>
         </div>
       ) : (
         <div className="flex flex-col gap-[10px] px-6">
-          {members.map((m) => (
-            <button
+          {aktifler.map((m) => (
+            <MemberRow
               key={m.profile_id}
-              type="button"
-              onClick={() => void navigate(`/yonetim/personel/${m.profile_id}`)}
-              className="pressable flex w-full cursor-pointer items-center gap-3 rounded-[16px] bg-card px-4 py-[14px] text-left"
-            >
-              <Avatar name={m.profile.full_name || '?'} />
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-[15px] font-bold text-ink">
-                  {m.profile.full_name || 'İsimsiz'}
-                </div>
-                <div className="mt-[2px] flex items-center gap-[6px] text-[13px] text-muted">
-                  <span>
-                    {m.profile.status === 'DISABLED'
-                      ? 'Devre dışı'
-                      : m.profile.role
-                        ? ROLE_LABELS[m.profile.role]
-                        : '—'}
-                  </span>
-                  {izindekiler.has(m.profile_id) && (
-                    <span className="flex shrink-0 items-center gap-[4px]">
-                      <span className="h-[6px] w-[6px] rounded-full bg-warn" />
-                      <span className="font-semibold text-warn">İzinde</span>
-                    </span>
-                  )}
-                </div>
-              </div>
-              <div className="shrink-0 text-right">
-                <div className="text-sm font-bold text-ink">
-                  {formatTL(numericStringToKurus(String(m.maas)))}
-                </div>
-                <div className="mt-[2px] text-[11.5px] text-muted">
-                  {m.odeme_gunu > 0 ? `Her ayın ${m.odeme_gunu}.` : 'Elle ödeme'}
-                </div>
-              </div>
-              <ChevronRightSm />
-            </button>
+              member={m}
+              izinde={izindekiler.has(m.profile_id)}
+              maasGizli={!isYonetici}
+              onOpen={() => void navigate(`/yonetim/personel/${m.profile_id}`)}
+            />
           ))}
+        </div>
+      )}
+
+      {!isPending && !isError && devreDisiSayisi > 0 && (
+        <div className="px-6 pt-[14px]">
+          <button
+            type="button"
+            onClick={() => void navigate('/yonetim/personel/devre-disi')}
+            className="pressable flex w-full cursor-pointer items-center gap-3 rounded-[16px] bg-field px-4 py-[14px] text-left"
+          >
+            <span className="min-w-0 flex-1 text-[14px] font-semibold text-soft">
+              Devre dışı olan kullanıcıları göster
+            </span>
+            {/* text-soft: text-muted (#888) bg-field üstünde 3.17:1, AA altı */}
+            <span className="shrink-0 text-[13px] font-bold text-soft">{devreDisiSayisi}</span>
+            <ChevronRightSm />
+          </button>
         </div>
       )}
       <div className="h-10" />
