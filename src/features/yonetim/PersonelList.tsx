@@ -241,7 +241,11 @@ export default function PersonelList() {
               <polyline points="9 18 15 12 9 6" />
             </svg>
             {bekleyenIstek.size > 0 && (
-              <span className="absolute -right-[3px] -top-[3px] h-[11px] w-[11px] rounded-full border-2 border-white bg-[#E53935]" />
+              // koyu mod: bkz. FinansMenu/IstekDot — `bg-[#E53935]` catch-all'a takılıyor
+              <span
+                className="absolute -right-[3px] -top-[3px] h-[11px] w-[11px] rounded-full border-2"
+                style={{ background: 'var(--dot-alert)', borderColor: 'var(--dot-ring)' }}
+              />
             )}
           </button>
           )

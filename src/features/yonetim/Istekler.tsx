@@ -141,7 +141,11 @@ export default function Istekler() {
             >
               {t.label}
               {bekleyen.has(t.key) && (
-                <span className="absolute -right-[2px] -top-[2px] h-[9px] w-[9px] rounded-full bg-[#E53935]" />
+                // koyu mod: bkz. FinansMenu/IstekDot — `bg-[#E53935]` catch-all'a takılıyor
+                <span
+                  className="absolute -right-[2px] -top-[2px] h-[9px] w-[9px] rounded-full"
+                  style={{ background: 'var(--dot-alert)' }}
+                />
               )}
             </button>
           )

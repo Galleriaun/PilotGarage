@@ -17,7 +17,13 @@ import {
  *  Konumlandırma için üst elemanda `relative` olmalı. */
 function IstekDot() {
   return (
-    <span className="absolute -right-[3px] -top-[3px] h-[11px] w-[11px] rounded-full border-2 border-white bg-[#E53935]" />
+    <span
+      className="absolute -right-[3px] -top-[3px] h-[11px] w-[11px] rounded-full border-2"
+      // Sınıf yerine CSS değişkeni: `bg-[#E53935]` index.css'teki
+      // `.dark [class*='bg-[#E']` catch-all'ına takılıp koyu modda #26262b
+      // oluyordu → beyaz halkalı, içi boş bir daire görünüyordu.
+      style={{ background: 'var(--dot-alert)', borderColor: 'var(--dot-ring)' }}
+    />
   )
 }
 

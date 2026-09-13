@@ -118,9 +118,16 @@ export function useMesaiKisiKayitlari(
  * Looks back a few days. 060'a kadar bu pencere bir AÇIKTI: hiçbir şey açık
  * oturumu kapatmadığı için 3 günden eski unutulmuş bir oturum bu listeden
  * sessizce düşerdi (raporda hâlâ açık görünürken). 060'ın otomatik kapatması
- * hiçbir oturumun 14 saatten uzun açık kalmamasını garanti ediyor — ama
- * YALNIZCA `businesses.mesai_bitis_saati` girilmiş işletmelerde. Ayar boşsa
- * eski davranış (ve bu açık) aynen sürer.
+ * bir oturumun günlerce açık kalmasını engelliyor — ama YALNIZCA
+ * `businesses.mesai_bitis_saati` girilmiş işletmelerde. Ayar boşsa eski
+ * davranış (ve bu açık) aynen sürer.
+ *
+ * ÜST SINIR (062): gün girişin duvar saatine göre ikiye bölünür —
+ * gündüz [06:00, kapanış), gece [kapanış, 23:59] ∪ [00:00, 06:00).
+ * Gece oturumu 6 saatte, önceki günden kalmış bir gündüz oturumu 14 saatte,
+ * bugünkü gündüz oturumu ise kapanışta kapanır. En uzunu sonuncusu:
+ * kapanış − 06:00, yani en fazla 17 saat (kapanış üst sınırı 23:00).
+ * 3 günlük pencere fazlasıyla yeterli.
  */
 export function useMesaiAcikOturumlar(businessId: string) {
   return useQuery({
@@ -162,6 +169,7 @@ export interface MesaiKonum {
   konum_yaricap_m: number
   statik_ipler: string[]
   // 060: kapanış saati ("HH:MM:SS" ya da null). null = otomatik kapatma KAPALI.
+  // 062: gece bitiş saati AYARI KALKTI — gece vardiyası artık sabit 6 saat.
   mesai_bitis_saati: string | null
 }
 

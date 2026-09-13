@@ -5,7 +5,7 @@
 -- Everything happens inside one transaction that is ROLLED BACK at the
 -- end — no test data survives, safe to run on the live project.
 --
--- Prerequisite: migrations 001–060 applied. (Checks were written against
+-- Prerequisite: migrations 001–062 applied. (Checks were written against
 -- 001–013; the later migrations keep every asserted behavior — decided-row
 -- immutability now has RPC-only escape hatches that this file does not
 -- exercise, so all checks still pass unchanged.)
@@ -103,6 +103,7 @@ declare
   v_mesai_giris timestamptz; -- 060 mesai otomatik kapatma
   v_mesai_cikis timestamptz;
   v_kapanis_ts  timestamptz;
+  v_gece_ts     timestamptz; -- 061 gece vardiyası bitiş anı
   v_sabit uuid;  -- 054 sabit gider (yöntem kopyalama)
   v_maas  uuid;  -- 054 born-ONAYLANDI maaş (değişmezlik kontrolü)
   v_durum text;
@@ -2048,7 +2049,7 @@ begin
   -- Kapanış 00:30 seçildi: "kapanış + 5 dk geçti" koşulu günün 23,5 saatinde
   -- doğrudur, yani test neredeyse her an koşabilir. Yalnızca gece 00:00–00:40
   -- arasında Kural 1 sınanamaz (aşağıdaki atlama), çünkü henüz kapanış+5
-  -- geçmemiştir. Kural 2 saat bağımsızdır ve her zaman koşar.
+  -- geçmemiştir. (d)'nin emniyet dalı (14 saat) saatten bağımsızdır, her zaman koşar.
   update businesses set mesai_bitis_saati = '00:30' where id = v_servis;
   update businesses set mesai_bitis_saati = null    where id = v_galeri;
 
@@ -2103,10 +2104,18 @@ begin
     raise notice '  (40a-c atlandı: Istanbul saati 00:40''tan erken — kapanış+5 henüz geçmedi)';
   end if;
 
-  -- (d) KURAL 2 / GECE VARDİYASI: girişi kapanıştan sonra olan, 23 saatlik
-  -- oturum. Kural 1 buna DOKUNAMAZ (giriş bugün değil ya da kapanıştan sonra),
-  -- Kural 2 kapatır. Saatten bağımsız, her zaman koşar.
-  v_mesai_giris := now() - interval '23 hours';
+  -- (d) EMNİYET DALI (14 saat): ÖNCEKİ GÜNDEN kalmış bir GÜNDÜZ oturumu.
+  -- Kural 1 buna dokunamaz ("giriş bugün" koşulu), gece penceresinde de
+  -- değildir → tek sahibi 14 saatlik tavandır. Saatten bağımsız, her zaman
+  -- koşar (dün 00:10 + 14 saat = dün 14:10, her koşulda geçmişte).
+  --
+  -- FIXTURE 062 İÇİN DEĞİŞTİ: eskiden `now() - 23 hours` idi ve 060 altında
+  -- doğruydu. 062 gece dalını duvar saatine bağlayınca bu giriş (duvar saati
+  -- ~now, kapanış 00:30) GECE sayılıp 6 saatte kapanmaya başladı — test günün
+  -- her saatinde patlıyordu. Kapanış 00:30 olduğu için gündüz penceresi
+  -- [00:00, 00:30); dün 00:10 o pencerededir.
+  v_mesai_giris := (((now() at time zone 'Europe/Istanbul')::date - 1) + time '00:10')
+                   at time zone 'Europe/Istanbul';
   insert into mesai_kayitlari (profile_id, business_id, tip, kaynak, ip, created_at)
   values (u_muhasebe, v_servis, 'GIRIS', 'KONUM', '', v_mesai_giris);
 
@@ -2116,13 +2125,13 @@ begin
   from mesai_kayitlari
   where profile_id = u_muhasebe and business_id = v_servis and tip = 'CIKIS';
   if n <> 1 then
-    raise exception 'FAIL: gece oturumu tam 1 çıkışla kapanmalıydı, got % (060)', n;
+    raise exception 'FAIL: dünden kalan oturum tam 1 çıkışla kapanmalıydı, got % (060)', n;
   end if;
   if v_durum <> 'OTOMATIK' then
-    raise exception 'FAIL: Kural 2 çıkışının kaynağı OTOMATIK olmalı, got % (060)', v_durum;
+    raise exception 'FAIL: emniyet çıkışının kaynağı OTOMATIK olmalı, got % (060)', v_durum;
   end if;
   if v_mesai_cikis <> v_mesai_giris + interval '14 hours' then
-    raise exception 'FAIL: Kural 2 çıkışı giriş+14s olmalıydı, got % (060)', v_mesai_cikis;
+    raise exception 'FAIL: emniyet çıkışı giriş+14s olmalıydı, got % (060)', v_mesai_cikis;
   end if;
   -- ASIL KORUMA: ilk taslak burada 0 dakikalık oturum üretiyordu ve gece
   -- vardiyası haftalık olduğu için bir gecelik emek DÜZENLİ olarak siliniyordu.
@@ -2130,7 +2139,8 @@ begin
     raise exception 'FAIL: otomatik çıkış girişten sonra olmalı (0 dakikalık oturum yasak) (060)';
   end if;
 
-  -- (e) 14 saatten YENİ oturum erken kapatılmaz.
+  -- (e) 2 dakikalık yeni oturum erken kapatılmaz — saate göre gündüz de gece
+  -- de sayılabilir, iki durumda da açık kalmalı.
   -- OFSET BİLEREK KÜÇÜK (2 dk): test kapanışı 00:30 olduğu için daha büyük bir
   -- ofset sabahın erken saatlerinde girişi 00:00–00:30 aralığına düşürüp Kural
   -- 1'i tetikleyebilirdi (ör. 2 saat ofsetle saat 02:15'te). 2 dk'da böyle bir
@@ -2142,7 +2152,7 @@ begin
     select 1 from mesai_kayitlari
     where profile_id = u_yonetici and business_id = v_servis and tip = 'CIKIS'
   ) then
-    raise exception 'FAIL: 14 saatten yeni gece oturumu erken kapatıldı (060)';
+    raise exception 'FAIL: 2 dakikalık yeni oturum erken kapatıldı (060)';
   end if;
 
   -- (f) kapanış saati GİRİLMEMİŞ işletmede hiçbir kural çalışmaz (Kural 2 dahil)
@@ -2180,6 +2190,261 @@ begin
   end if;
 
   raise notice 'PASS 40: mesai otomatik kapatma (kapanış + maks süre), hatırlatma, yetki (060)';
+
+  -- ── PASS 41: gece vardiyası = sabit 6 saat, ayar kalktı (062) ──
+  -- PASS 40'ın bıraktığı satırlar SİLİNİR: 41 farklı kapanış saatleriyle
+  -- çalışıyor ve 40'tan kalan AÇIK oturumlar yeni ayarda beklenmedik biçimde
+  -- kapanıp sayımları bozardı. Satırlar bu transaction'da doğdu, silmek
+  -- güvenli (zaten sonunda rollback var). (PASS 40'tan beri logged out.)
+  delete from mesai_kayitlari
+  where profile_id in (u_personel, u_muhasebe, u_yonetici);
+  delete from notifications
+  where profile_id in (u_personel, u_muhasebe, u_yonetici) and type = 'MESAI';
+
+  -- (a) 061'in ayarı GERÇEKTEN kalkmış olmalı. Kolon dursaydı 062 yarım
+  -- uygulanmış demektir ve istemci artık onu yazmadığı için sessizce eskimiş
+  -- bir değer taşırdı.
+  if exists (select 1 from information_schema.columns
+             where table_schema = 'public' and table_name = 'businesses'
+               and column_name = 'mesai_gece_bitis_saati') then
+    raise exception 'FAIL: mesai_gece_bitis_saati kolonu hâlâ duruyor (062)';
+  end if;
+
+  update businesses set mesai_bitis_saati = '18:00' where id = v_servis;
+  update businesses set mesai_bitis_saati = null    where id = v_galeri;
+
+  -- (b)(c)(c2) ÜÇ SINIF, ÜÇÜ DE GEÇMİŞ TARİHLİ → saatten bağımsız, her an
+  -- koşar. Kural 1 hiçbirine dokunamaz ("giriş bugün" koşulu), yani ölçülen şey
+  -- GÜNDÜZ/GECE penceresi ayrımıdır. Kapanış 18:00 → gündüz = [06:00, 18:00).
+  --   (b)  GECE (akşam)      : (bugün−3) 20:00 → +6 saat  → (bugün−2) 02:00
+  --   (c)  GECE (gece yarısı): (bugün−3) 02:00 → +6 saat  → (bugün−3) 08:00
+  --   (c2) EMNİYET           : (bugün−3) 09:00 → +14 saat → (bugün−3) 23:00
+  --
+  -- (c) OWNER İSTEĞİ 2026-08-10: gece penceresinin [00:00, 06:00) yarısı tam
+  -- bunun için var. 062'nin ilk hâlinde gece dalı yalnızca `duvar saati >=
+  -- kapanış` diyordu; 02:00 < 18:00 olduğu için gece yarısından sonra başlayan
+  -- oturum gece SAYILMIYOR, girişi bugünse Kural 1'e düşüp AKŞAMKİ kapanışa
+  -- taşınıyordu (~17,5 saatlik sahte oturum). Somut senaryo (g)'de.
+  --
+  -- (c2) Kural 3'ün gerçek ve TEK sahibi: önceki günden kalmış GÜNDÜZ oturumu.
+  -- Kural 1 "giriş bugün" istediği için dokunamaz, gece penceresinde de
+  -- değildir. Bu dal olmasa böyle bir oturum sonsuza dek açık kalırdı.
+  v_mesai_giris := ((((now() at time zone 'Europe/Istanbul')::date) - 3) + time '20:00')
+                   at time zone 'Europe/Istanbul';
+  insert into mesai_kayitlari (profile_id, business_id, tip, kaynak, ip, created_at)
+  values (u_personel, v_servis, 'GIRIS', 'KONUM', '', v_mesai_giris);
+
+  insert into mesai_kayitlari (profile_id, business_id, tip, kaynak, ip, created_at)
+  values (u_muhasebe, v_servis, 'GIRIS', 'KONUM', '',
+          ((((now() at time zone 'Europe/Istanbul')::date) - 3) + time '02:00')
+          at time zone 'Europe/Istanbul');
+
+  insert into mesai_kayitlari (profile_id, business_id, tip, kaynak, ip, created_at)
+  values (u_yonetici, v_servis, 'GIRIS', 'KONUM', '',
+          ((((now() at time zone 'Europe/Istanbul')::date) - 3) + time '09:00')
+          at time zone 'Europe/Istanbul');
+
+  perform mesai_otomatik_kapat();
+
+  -- (b) gece → giriş + 6 saat, kaynak OTOMATIK
+  select count(*), min(created_at), min(kaynak::text)
+    into n, v_mesai_cikis, v_durum
+  from mesai_kayitlari
+  where profile_id = u_personel and business_id = v_servis and tip = 'CIKIS';
+  if n <> 1 then
+    raise exception 'FAIL: gece oturumu tam 1 çıkışla kapanmalıydı, got % (062)', n;
+  end if;
+  if v_mesai_cikis <> v_mesai_giris + interval '6 hours' then
+    raise exception 'FAIL: gece oturumu giriş+6s ile kapanmalıydı (% beklendi), got % (062)',
+      v_mesai_giris + interval '6 hours', v_mesai_cikis;
+  end if;
+  if v_durum <> 'OTOMATIK' then
+    raise exception 'FAIL: gece çıkışının kaynağı OTOMATIK olmalı, got % (062)', v_durum;
+  end if;
+
+  -- (c) gece yarısı sonrası da GECE → giriş + 6 saat (14 DEĞİL, kapanış DEĞİL)
+  v_gece_ts := ((((now() at time zone 'Europe/Istanbul')::date) - 3) + time '08:00')
+               at time zone 'Europe/Istanbul';
+  select count(*), min(created_at) into n, v_mesai_cikis
+  from mesai_kayitlari
+  where profile_id = u_muhasebe and business_id = v_servis and tip = 'CIKIS';
+  if n <> 1 or v_mesai_cikis <> v_gece_ts then
+    raise exception 'FAIL: gece yarısı sonrası oturum giriş+6s ile kapanmalıydı (% beklendi), got % / n=% (062)',
+      v_gece_ts, v_mesai_cikis, n;
+  end if;
+
+  -- (c2) önceki günden kalan GÜNDÜZ oturumu → emniyet dalı, giriş + 14 saat
+  v_gece_ts := ((((now() at time zone 'Europe/Istanbul')::date) - 3) + time '23:00')
+               at time zone 'Europe/Istanbul';
+  select count(*), min(created_at) into n, v_mesai_cikis
+  from mesai_kayitlari
+  where profile_id = u_yonetici and business_id = v_servis and tip = 'CIKIS';
+  if n <> 1 or v_mesai_cikis <> v_gece_ts then
+    raise exception 'FAIL: önceki günden kalan gündüz oturumu giriş+14s ile kapanmalıydı (% beklendi), got % / n=% (062)',
+      v_gece_ts, v_mesai_cikis, n;
+  end if;
+
+  -- (d) 6 SAATİ DOLMAMIŞ gece oturumu ERKEN KAPATILMAZ. Kapanış "şimdi−10 dk"
+  -- yapılır ki giriş ("şimdi−5 dk") her koşulda kapanıştan SONRA kalsın; böylece
+  -- test saatten bağımsız olur.
+  delete from mesai_kayitlari
+  where profile_id in (u_personel, u_muhasebe, u_yonetici);
+  update businesses
+     set mesai_bitis_saati = ((now() at time zone 'Europe/Istanbul')::time
+                              - interval '10 minutes')::time
+   where id = v_servis;
+  insert into mesai_kayitlari (profile_id, business_id, tip, kaynak, ip, created_at)
+  values (u_personel, v_servis, 'GIRIS', 'KONUM', '', now() - interval '5 minutes');
+  perform mesai_otomatik_kapat();
+  if exists (
+    select 1 from mesai_kayitlari
+    where profile_id = u_personel and business_id = v_servis and tip = 'CIKIS'
+  ) then
+    raise exception 'FAIL: 6 saati dolmamış gece oturumu erken kapatıldı (062)';
+  end if;
+
+  -- (e) KURAL 1 BOZULMADI (asıl risk buydu: global 6 saat gündüz vardiyasını
+  -- öldürüyordu) + hatırlatma yalnızca gündüz penceresine gider.
+  -- PASS 40'takiyle aynı 00:30 kapanış hilesi: koşul günün 23,5 saatinde doğru.
+  delete from mesai_kayitlari
+  where profile_id in (u_personel, u_muhasebe, u_yonetici);
+  delete from notifications
+  where profile_id in (u_personel, u_muhasebe, u_yonetici) and type = 'MESAI';
+  update businesses set mesai_bitis_saati = '00:30' where id = v_servis;
+
+  if (now() at time zone 'Europe/Istanbul')::time >= '00:40' then
+    -- "0 bildirim" testinin DOĞRU sebepten geçtiğinden emin ol: DISABLED bir
+    -- hesap da 0 üretirdi ve gündüz/gece ayrımı hiç sınanmamış olurdu.
+    if exists (select 1 from profiles
+               where id in (u_personel, u_muhasebe) and status <> 'ACTIVE') then
+      raise exception 'FAIL: 41e öncesi test kullanıcıları ACTIVE değil (062)';
+    end if;
+
+    v_kapanis_ts := ((now() at time zone 'Europe/Istanbul')::date + time '00:30')
+                    at time zone 'Europe/Istanbul';
+    -- gündüz (00:20, pencere [00:00, 00:30)) / kapanış sonrası gece (şimdi).
+    --
+    -- GECE FİXTURE'I `now()` — SABİT 00:35 DEĞİL. 00:35 sabiti "6 saati dolmadı,
+    -- açık kalmalı" iddiasını saate bağımlı yapıyordu: test 06:35'ten sonra
+    -- koşarsa oturum haklı olarak kapanır ve iddia patlardı (günün büyük
+    -- kısmı). `now()` hem kapanıştan sonradır (dış guard: saat >= 00:40) hem de
+    -- 0 dakikalıktır, yani her koşulda açık kalmalıdır.
+    insert into mesai_kayitlari (profile_id, business_id, tip, kaynak, ip, created_at)
+    values (u_personel, v_servis, 'GIRIS', 'KONUM', '',
+            ((now() at time zone 'Europe/Istanbul')::date + time '00:20')
+            at time zone 'Europe/Istanbul');
+    insert into mesai_kayitlari (profile_id, business_id, tip, kaynak, ip, created_at)
+    values (u_muhasebe, v_servis, 'GIRIS', 'KONUM', '', now());
+
+    -- hatırlatma ÖNCE koşar (kapatma oturumları kapatmadan)
+    perform mesai_hatirlatma();
+    select count(*) into n from notifications
+    where profile_id = u_personel and business_id = v_servis and type = 'MESAI';
+    if n <> 1 then
+      raise exception 'FAIL: gündüz oturumuna hatırlatma tam 1 olmalıydı, got % (062)', n;
+    end if;
+    select count(*) into n from notifications
+    where profile_id = u_muhasebe and business_id = v_servis and type = 'MESAI';
+    if n <> 0 then
+      raise exception 'FAIL: kapanış sonrası gece oturumuna hatırlatma gitti (%) (062)', n;
+    end if;
+
+    perform mesai_otomatik_kapat();
+    -- gündüz → KAPANIŞ saatinde (6 saat DEĞİL: 00:20 girişi 06:20'de değil
+    -- 00:30'da kapanmalı — global 6 saat olsaydı bu eşitlik tutmazdı)
+    select count(*), min(created_at) into n, v_mesai_cikis
+    from mesai_kayitlari
+    where profile_id = u_personel and business_id = v_servis and tip = 'CIKIS';
+    if n <> 1 or v_mesai_cikis <> v_kapanis_ts then
+      raise exception 'FAIL: gündüz oturumu kapanış saatinde kapanmalıydı (% beklendi), got % / n=% (062)',
+        v_kapanis_ts, v_mesai_cikis, n;
+    end if;
+    -- kapanış sonrası gece oturumu → 6 saati dolmadı, AÇIK kalmalı
+    if exists (select 1 from mesai_kayitlari
+               where profile_id = u_muhasebe and business_id = v_servis and tip = 'CIKIS') then
+      raise exception 'FAIL: vakti gelmemiş gece oturumu erken kapatıldı (062)';
+    end if;
+
+    -- otomatik kapatma HİÇBİR bildirim üretmez (owner kararı, 060'tan beri)
+    select count(*) into n from notifications
+    where profile_id in (u_personel, u_muhasebe, u_yonetici)
+      and business_id = v_servis and type = 'MESAI';
+    if n <> 1 then
+      raise exception 'FAIL: otomatik kapatma bildirim üretti (toplam % olmalıydı 1) (062)', n;
+    end if;
+  else
+    raise notice '  (41e atlandı: Istanbul saati 00:40''tan erken — kapanış+5 henüz geçmedi)';
+  end if;
+
+  -- (f) kapanış saati GİRİLMEMİŞ işletmede hiçbir kural çalışmaz
+  insert into mesai_kayitlari (profile_id, business_id, tip, kaynak, ip, created_at)
+  values (u_personel, v_galeri, 'GIRIS', 'KONUM', '', now() - interval '23 hours');
+  perform mesai_otomatik_kapat();
+  if exists (
+    select 1 from mesai_kayitlari
+    where profile_id = u_personel and business_id = v_galeri and tip = 'CIKIS'
+  ) then
+    raise exception 'FAIL: mesai_bitis_saati NULL iken oturum kapatıldı (062)';
+  end if;
+
+  -- (g) OWNER SENARYOSU (2026-08-10), UÇTAN UCA: gece vardiyası 6 saatte
+  -- otomatik kapanır; personel hâlâ çalışıyorsa TEKRAR Giriş yapar ve o İKİNCİ
+  -- oturum da GECE'dir — gece yarısından sonra başlasa bile — yani yine 6
+  -- saatte kapanır. 062'nin ilk hâlinde ikinci oturum (duvar saati 00:45 <
+  -- kapanış 18:00) Kural 1'e düşüyor ve o akşamki kapanışa taşınıyordu.
+  delete from mesai_kayitlari
+  where profile_id in (u_personel, u_muhasebe, u_yonetici);
+  update businesses set mesai_bitis_saati = '18:00' where id = v_servis;
+
+  v_mesai_giris := ((((now() at time zone 'Europe/Istanbul')::date) - 3) + time '18:40')
+                   at time zone 'Europe/Istanbul';
+  insert into mesai_kayitlari (profile_id, business_id, tip, kaynak, ip, created_at)
+  values (u_yonetici, v_servis, 'GIRIS', 'KONUM', '', v_mesai_giris);
+  perform mesai_otomatik_kapat();
+
+  select count(*), min(created_at) into n, v_mesai_cikis
+  from mesai_kayitlari
+  where profile_id = u_yonetici and business_id = v_servis and tip = 'CIKIS';
+  if n <> 1 or v_mesai_cikis <> v_mesai_giris + interval '6 hours' then
+    raise exception 'FAIL: (g) ilk gece oturumu giriş+6s ile kapanmalıydı (% beklendi), got % / n=% (062)',
+      v_mesai_giris + interval '6 hours', v_mesai_cikis, n;
+  end if;
+
+  -- kapandığını görüp 5 dk sonra tekrar Giriş: duvar saati 00:45.
+  v_gece_ts := v_mesai_cikis + interval '5 minutes';
+  insert into mesai_kayitlari (profile_id, business_id, tip, kaynak, ip, created_at)
+  values (u_yonetici, v_servis, 'GIRIS', 'KONUM', '', v_gece_ts);
+  perform mesai_otomatik_kapat();
+
+  select count(*), max(created_at) into n, v_mesai_cikis
+  from mesai_kayitlari
+  where profile_id = u_yonetici and business_id = v_servis and tip = 'CIKIS';
+  if n <> 2 then
+    raise exception 'FAIL: (g) ikinci gece oturumu kapanmadı, çıkış sayısı % (062)', n;
+  end if;
+  if v_mesai_cikis <> v_gece_ts + interval '6 hours' then
+    raise exception 'FAIL: (g) devam oturumu da giriş+6s ile kapanmalıydı (% beklendi), got % (062)',
+      v_gece_ts + interval '6 hours', v_mesai_cikis;
+  end if;
+
+  -- (h) 062 `create or replace` yaptı — 060'ın kilitleri ve revoke'ları
+  -- YERİNDE KALMALI (ACL create-or-replace'te korunur; 062 yine de revoke eder).
+  if pg_get_functiondef(to_regprocedure('public.mesai_otomatik_kapat()'))
+     not like '%pg_try_advisory_xact_lock%' then
+    raise exception 'FAIL: mesai_otomatik_kapat çakışma kilidini kaybetti (062)';
+  end if;
+  if pg_get_functiondef(to_regprocedure('public.mesai_hatirlatma()'))
+     not like '%pg_try_advisory_xact_lock%' then
+    raise exception 'FAIL: mesai_hatirlatma çakışma kilidini kaybetti (062)';
+  end if;
+  if has_function_privilege('authenticated', 'public.mesai_otomatik_kapat()', 'execute') then
+    raise exception 'FAIL: mesai_otomatik_kapat authenticated rolünden çağrılabiliyor (062)';
+  end if;
+  if has_function_privilege('authenticated', 'public.mesai_hatirlatma()', 'execute') then
+    raise exception 'FAIL: mesai_hatirlatma authenticated rolünden çağrılabiliyor (062)';
+  end if;
+
+  raise notice 'PASS 41: gece = sabit 6 saat (gece yarısı sonrası + devam oturumu dahil), gündüz kapanışta, ayar kaldırıldı (062)';
 
   raise notice '';
   raise notice '=== ALL TESTS PASSED (rolling back — no test data persists) ===';

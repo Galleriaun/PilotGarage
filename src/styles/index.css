@@ -40,6 +40,35 @@
   --seg-fg: #9a9aa1;
   --seg-fg-on: #111111;
 }
+
+/* Bekleyen-iş bildirim noktası (İstekler). Sınıf olarak `bg-[#E53935]`
+   yazılamaz: aşağıdaki `.dark [class*='bg-[#E']` catch-all'ı onu yakalayıp
+   #26262b yapıyordu ve `border-white` de koyu modda beyaz kaldığı için nokta
+   İÇİ BOŞ BEYAZ HALKA gibi görünüyordu. Halka rengi noktanın ALTINDAKİ yüzey:
+   Personel listesi ve Finans menüsü butonundaki iki nokta `bg-field` üstünde
+   (koyu: #26262b) — orada birebir tutar. Finans menüsü İÇİNDEKİ İstekler ikon
+   kutusu ise satır içi `#F0FDF4` taşır ve hiçbir koyu kural onu çevirmez (koyu
+   modda açık yeşil kalır), yani o tek yerde halka koyu, zemin açıktır. */
+:root {
+  --dot-alert: #e53935;
+  --dot-ring: #ffffff;
+}
+.dark {
+  --dot-alert: #e53935;
+  --dot-ring: #26262b;
+}
+
+/* Kırmızı metnin KOYU zemin üstündeki hâli. `--color-danger` (#c62828) koyu
+   modda override edilmiyor ve `bg-danger-soft` (#331b1b) üstünde yalnızca
+   2.8:1 kontrast veriyor — WCAG AA (4.5:1) çok altında, gerçekten okunmuyor.
+   Global token'ı değiştirmek TÜM text-danger kullanımlarını etkilerdi, o yüzden
+   ayrı bir değişken: #ff8a80, #331b1b üstünde ~7:1. */
+:root {
+  --danger-on-soft: #c62828;
+}
+.dark {
+  --danger-on-soft: #ff8a80;
+}
 /* Unselected chips sit on near-black surfaces where the pill shape vanishes —
    give them a visible edge. Matches only `var(--seg)` (the closing paren
    excludes `var(--seg-on)` selected chips). */
@@ -190,6 +219,21 @@
 .dark [style*='border-color: rgb(242, 242, 242)'] {
   border-color: #34343b !important;
 }
+/* HEP KOYU YÜZEYLER — yukarıdaki çevirilerden muaf.
+   Masaüstü üst çubuğu (AppShell TopBar) her iki temada da koyudur ve üstündeki
+   aktif sekme bilerek BEYAZ haptır. Genel "beyaz yüzey → koyu yüzey" çevirisi
+   buna da uygulanınca hap #202023 oluyor, çubuk #202024/80 → kontrast ~1:1:
+   aktif sekme tamamen görünmez kalıyordu (owner 2026-08-10). Aynısı sağdaki
+   aktif ikon hapı ve onun stroke='#111' ikonu için de geçerli.
+   Özgüllük: muafiyet (0,3,0), çevrilen kural (0,2,0) → !important'la kazanır. */
+.dark [data-fixed-dark] [style*='background: rgb(255, 255, 255)'] {
+  background-color: #fff !important;
+  color: #111 !important;
+}
+.dark [data-fixed-dark] svg[stroke='#111'] {
+  stroke: #111;
+}
+
 /* desktop dark: cards get a subtle border like the light theme */
 @media (min-width: 768px) {
   .dark .bg-card {

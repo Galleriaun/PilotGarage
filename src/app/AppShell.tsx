@@ -283,7 +283,12 @@ function TopBar({ isPersonel }: { isPersonel: boolean }) {
     { to: '/ayarlar', label: 'Ayarlar', icon: GearNavIcon, active: pathname.startsWith('/ayarlar') },
   ]
   return (
-    <header className="hidden h-14 shrink-0 items-center bg-[#202024]/80 px-6 backdrop-blur-md md:absolute md:inset-x-0 md:top-0 md:z-30 md:flex">
+    // data-fixed-dark: bu çubuk HER İKİ temada da koyu — koyu modun genel
+    // "beyaz yüzey → koyu yüzey" çevirisi buraya uygulanmaz (index.css)
+    <header
+      data-fixed-dark
+      className="hidden h-14 shrink-0 items-center bg-[#202024]/80 px-6 backdrop-blur-md md:absolute md:inset-x-0 md:top-0 md:z-30 md:flex"
+    >
       <div className="flex w-[220px] items-center gap-2">
         <span className="truncate text-[17px] font-bold tracking-[-0.3px] text-white">
           {activeBusiness?.name ?? 'PilotGarage'}

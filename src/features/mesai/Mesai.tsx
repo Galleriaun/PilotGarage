@@ -441,7 +441,8 @@ export default function Mesai() {
           <p className="mt-2 px-1 text-[11.5px] leading-relaxed text-muted">
             Kapanışta ({saatLabel(mesaiKonum.mesai_bitis_saati)}) açık mesailer otomatik
             kapatılır. Çalışmaya devam ediyorsanız ya da gece vardiyasındaysanız tekrar{' '}
-            <span className="font-semibold text-ink">Giriş</span> yapın.
+            <span className="font-semibold text-ink">Giriş</span> yapın. Gece mesaileri
+            girişinden <span className="font-semibold text-ink">6 saat</span> sonra kapatılır.
           </p>
         )}
       </div>

@@ -1,6 +1,12 @@
 import { useState } from 'react'
 import { useBusiness } from '../../app/providers/BusinessProvider'
 import ConfirmDialog from '../../components/ui/ConfirmDialog'
+import SettingsCard, {
+  cardInputCls,
+  cardRowCls,
+  fieldLabelCls,
+  LoadError,
+} from '../../components/ui/SettingsCard'
 import { formatTL, kurusToInput, numericStringToKurus, parseTLToKurus } from '../../lib/money'
 import { useKategoriler } from '../finans/api'
 import type { IslemTur, Kategori } from '../finans/types'
@@ -17,6 +23,7 @@ import type { PrimPaket } from './types'
 import { FormModal, GearSmIcon, modalFieldLabel, modalInputCls, PencilIcon, ScreenHeader } from './shared'
 import MesaiKonumSection from '../mesai/MesaiKonumSection'
 
+/** Satır içi sil butonu — prim paketleri ve kategoriler aynı ikonu kullanıyor. */
 function TrashSmall({ label, onClick }: { label: string; onClick: () => void }) {
   return (
     <button
@@ -35,7 +42,7 @@ function TrashSmall({ label, onClick }: { label: string; onClick: () => void }) 
 
 /** Prim paketleri (050): ad + tutar; Prim Ver seçicisini besler. Yönetici-only. */
 function PrimPaketSection({ businessId }: { businessId: string }) {
-  const { data: paketler = [] } = usePrimPaketleri(businessId)
+  const { data: paketler = [], error: loadError } = usePrimPaketleri(businessId)
   const addPaket = useAddPrimPaket()
   const updatePaket = useUpdatePrimPaket()
   const deletePaket = useDeletePrimPaket()
@@ -85,14 +92,20 @@ function PrimPaketSection({ businessId }: { businessId: string }) {
   }
 
   return (
-    <div>
-      <div className="mb-2 text-[11px] font-bold tracking-[0.6px] text-[#666]">PRİM PAKETLERİ</div>
+    <SettingsCard
+      title="Prim Paketleri"
+      summary={loadError ? 'Yüklenemedi' : paketler.length > 0 ? `${paketler.length} paket` : 'Yok'}
+    >
+      {/* Hata, boş-durum metniyle KARIŞTIRILMAMALI: "Henüz prim paketi yok"
+          yükleme hatasında da yazardı ve silinmiş veri gibi görünürdü. */}
+      {loadError && (
+        <div className="mb-2">
+          <LoadError error={loadError} what="Prim paketleri" />
+        </div>
+      )}
       <div className="mb-2 flex flex-col gap-[6px]">
         {paketler.map((p) => (
-          <div
-            key={p.id}
-            className="flex items-center gap-2 rounded-[12px] bg-card px-3 py-[11px]"
-          >
+          <div key={p.id} className={cardRowCls}>
             <span className="min-w-0 flex-1 truncate text-sm font-semibold text-ink">{p.name}</span>
             <span className="shrink-0 text-sm font-bold text-ink">
               {formatTL(numericStringToKurus(String(p.tutar)))}
@@ -101,15 +114,15 @@ function PrimPaketSection({ businessId }: { businessId: string }) {
               type="button"
               onClick={() => openEdit(p)}
               aria-label={`${p.name} paketini düzenle`}
-              className="flex h-[26px] w-[26px] shrink-0 cursor-pointer items-center justify-center rounded-[8px] bg-field"
+              className="flex h-[26px] w-[26px] shrink-0 cursor-pointer items-center justify-center rounded-[8px] bg-card"
             >
               <PencilIcon size={13} />
             </button>
             <TrashSmall label={`${p.name} paketini sil`} onClick={() => setDeleting(p)} />
           </div>
         ))}
-        {paketler.length === 0 && (
-          <div className="rounded-[12px] bg-card px-3 py-[11px] text-[13px] text-muted">
+        {paketler.length === 0 && !loadError && (
+          <div className="rounded-[12px] bg-field px-3 py-[11px] text-[13px] text-muted">
             Henüz prim paketi yok.
           </div>
         )}
@@ -117,7 +130,7 @@ function PrimPaketSection({ businessId }: { businessId: string }) {
       <button
         type="button"
         onClick={openAdd}
-        className="w-full cursor-pointer rounded-[12px] bg-field py-[11px] text-[13.5px] font-semibold text-ink"
+        className="w-full cursor-pointer rounded-[12px] bg-ink py-[11px] text-[13.5px] font-semibold text-white"
       >
         + Prim paketi ekle
       </button>
@@ -163,32 +176,48 @@ function PrimPaketSection({ businessId }: { businessId: string }) {
         onConfirm={() => void onDelete()}
         onCancel={() => setDeleting(null)}
       />
-    </div>
+    </SettingsCard>
   )
 }
 
-function KategoriSection({
-  title,
-  tur,
+/**
+ * Tek kart, içinde Gelir/Gider geçişi (İstekler ekranındaki segment deseni).
+ * Eskiden iki ayrı bölümdü; ikisi de uzun listeler olduğu için sayfa iki
+ * katına çıkıyordu.
+ */
+function KategorilerSection({
   businessId,
   kategoriler,
+  loadError,
   onRequestDelete,
 }: {
-  title: string
-  tur: IslemTur
   businessId: string
   kategoriler: Kategori[]
+  loadError: unknown
   onRequestDelete: (k: Kategori) => void
 }) {
   const addKategori = useAddKategori()
+  const [tur, setTur] = useState<IslemTur>('GELIR')
   const [value, setValue] = useState('')
   const [error, setError] = useState('')
+
+  const gelir = kategoriler.filter((k) => k.tur === 'GELIR')
+  const gider = kategoriler.filter((k) => k.tur === 'GIDER')
+  const shown = tur === 'GELIR' ? gelir : gider
+
+  function switchTur(next: IslemTur) {
+    if (next === tur) return
+    setTur(next)
+    // Gelir için yazılmış bir ad, sekme değişince sessizce Gider'e eklenmesin.
+    setValue('')
+    setError('')
+  }
 
   async function onAdd() {
     const label = value.trim()
     setError('')
     if (!label) return
-    if (kategoriler.some((k) => k.label.toLocaleLowerCase('tr-TR') === label.toLocaleLowerCase('tr-TR'))) {
+    if (shown.some((k) => k.label.toLocaleLowerCase('tr-TR') === label.toLocaleLowerCase('tr-TR'))) {
       setError('Bu kategori zaten var.')
       return
     }
@@ -201,45 +230,68 @@ function KategoriSection({
   }
 
   return (
-    <div>
-      <div className="mb-2 text-[11px] font-bold tracking-[0.6px] text-[#666]">{title}</div>
-      <div className="mb-2 flex flex-col gap-[6px]">
-        {kategoriler.map((k) => (
-          <div
-            key={k.id}
-            className="flex items-center justify-between gap-3 rounded-[12px] bg-card px-3 py-[11px]"
-          >
-            <span className="min-w-0 truncate text-sm font-semibold text-ink">{k.label}</span>
+    <SettingsCard
+      title="Kategoriler"
+      summary={
+        loadError != null ? 'Yüklenemedi' : `${gelir.length} gelir · ${gider.length} gider`
+      }
+    >
+      {/* `loadError != null` BOOLEAN olmalı: prop tipi `unknown` olduğu için
+          düz `loadError && …` false dalında `unknown` döndürür ve React onu
+          render edemez (TS2322). */}
+      {loadError != null && (
+        <div className="mb-3">
+          <LoadError error={loadError} what="Kategoriler" />
+        </div>
+      )}
+      <div className="mb-3 flex gap-2">
+        {(['GELIR', 'GIDER'] as IslemTur[]).map((t) => {
+          const selected = tur === t
+          return (
             <button
+              key={t}
               type="button"
-              onClick={() => onRequestDelete(k)}
-              aria-label={`${k.label} kategorisini sil`}
-              className="flex h-[26px] w-[26px] shrink-0 cursor-pointer items-center justify-center rounded-[8px] bg-danger-soft"
+              onClick={() => switchTur(t)}
+              className="flex-1 cursor-pointer rounded-[12px] py-[9px] text-center text-[13px] font-semibold"
+              style={{
+                background: selected ? 'var(--seg-on)' : 'var(--seg)',
+                color: selected ? 'var(--seg-fg-on)' : 'var(--seg-fg)',
+              }}
             >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#C62828" strokeWidth="2.4" strokeLinecap="round">
-                <line x1="18" y1="6" x2="6" y2="18" />
-                <line x1="6" y1="6" x2="18" y2="18" />
-              </svg>
+              {t === 'GELIR' ? `Gelir (${gelir.length})` : `Gider (${gider.length})`}
             </button>
+          )
+        })}
+      </div>
+
+      <div className="mb-2 flex flex-col gap-[6px]">
+        {shown.map((k) => (
+          <div key={k.id} className={cardRowCls}>
+            <span className="min-w-0 flex-1 truncate text-sm font-semibold text-ink">{k.label}</span>
+            <TrashSmall
+              label={`${k.label} kategorisini sil`}
+              onClick={() => onRequestDelete(k)}
+            />
           </div>
         ))}
-        {kategoriler.length === 0 && (
-          <div className="rounded-[12px] bg-card px-3 py-[11px] text-[13px] text-muted">
+        {shown.length === 0 && loadError == null && (
+          <div className="rounded-[12px] bg-field px-3 py-[11px] text-[13px] text-muted">
             Henüz kategori yok.
           </div>
         )}
       </div>
+
       {error && <p className="mb-2 text-[13px] text-danger">{error}</p>}
       <div className="flex gap-2">
         <input
           type="text"
-          placeholder="Yeni kategori adı"
+          placeholder={tur === 'GELIR' ? 'Yeni gelir kategorisi' : 'Yeni gider kategorisi'}
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter') void onAdd()
           }}
-          className="min-w-0 flex-1 rounded-[12px] border-none bg-field px-[14px] py-[11px] text-sm text-ink outline-none placeholder:text-faint"
+          className={`min-w-0 flex-1 ${cardInputCls}`}
         />
         <button
           type="button"
@@ -250,14 +302,14 @@ function KategoriSection({
           <span className="text-[13.5px] font-semibold text-white">Ekle</span>
         </button>
       </div>
-    </div>
+    </SettingsCard>
   )
 }
 
 export default function IsletmeAyarlari() {
   const { activeBusiness } = useBusiness()
   const businessId = activeBusiness?.id ?? ''
-  const { data: kategoriler = [] } = useKategoriler(businessId)
+  const { data: kategoriler = [], error: kategoriError } = useKategoriler(businessId)
   const updateName = useUpdateBusinessName()
   const deactivateKategori = useDeactivateKategori()
 
@@ -292,63 +344,52 @@ export default function IsletmeAyarlari() {
     }
   }
 
-  const gelir = kategoriler.filter((k) => k.tur === 'GELIR')
-  const gider = kategoriler.filter((k) => k.tur === 'GIDER')
-
   return (
     <div className="screen-forward">
-      <ScreenHeader title="İşletme Ayarları" icon={<GearSmIcon />} iconBg="#F2F2F2" backTo="/yonetim" />
+      {/* Masaüstünde ScreenHeader DA sarmalayıcının içinde: kendi px-6'sını sabit
+          taşıyor, yalnızca gövde ortalansaydı başlık solda kalırdı. */}
+      <div className="mx-auto w-full md:max-w-[760px]">
+        <ScreenHeader title="İşletme Ayarları" icon={<GearSmIcon />} iconBg="#F2F2F2" backTo="/yonetim" />
 
-      <div className="flex flex-col gap-4 px-6">
-        {/* İşletme adı */}
-        <div>
-          <div className="mb-[6px] text-[11px] font-bold uppercase tracking-[0.6px] text-faint">
-            İŞLETME ADI
-          </div>
-          <input
-            type="text"
-            value={name}
-            onChange={(e) => {
-              setName(e.target.value)
-              setNameSaved(false)
-            }}
-            className="w-full rounded-[12px] border-none bg-field px-[14px] py-[13px] text-[15px] text-ink outline-none"
+        <div className="flex flex-col gap-3 px-6">
+          <SettingsCard title="İşletme" collapsible={false}>
+            <div className={fieldLabelCls}>İŞLETME ADI</div>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => {
+                setName(e.target.value)
+                setNameSaved(false)
+              }}
+              className="w-full rounded-[12px] border-none bg-field px-[14px] py-[13px] text-[15px] text-ink outline-none"
+            />
+            {nameError && <p className="mt-2 text-[13px] text-danger">{nameError}</p>}
+            {(nameDirty || nameSaved) && (
+              <button
+                type="button"
+                onClick={() => void onSaveName()}
+                disabled={!nameDirty || updateName.isPending}
+                className="mt-3 w-full cursor-pointer rounded-[12px] bg-ink py-[11px] text-sm font-semibold text-white disabled:opacity-60"
+              >
+                {updateName.isPending ? 'Kaydediliyor…' : nameSaved && !nameDirty ? 'Kaydedildi ✓' : 'İsmi Kaydet'}
+              </button>
+            )}
+          </SettingsCard>
+
+          <KategorilerSection
+            businessId={businessId}
+            kategoriler={kategoriler}
+            loadError={kategoriError}
+            onRequestDelete={setDeleting}
           />
-          {nameError && <p className="mt-2 text-[13px] text-danger">{nameError}</p>}
-          {(nameDirty || nameSaved) && (
-            <button
-              type="button"
-              onClick={() => void onSaveName()}
-              disabled={!nameDirty || updateName.isPending}
-              className="mt-2 w-full cursor-pointer rounded-[12px] bg-ink py-[11px] text-sm font-semibold text-white disabled:opacity-60"
-            >
-              {updateName.isPending ? 'Kaydediliyor…' : nameSaved && !nameDirty ? 'Kaydedildi ✓' : 'İsmi Kaydet'}
-            </button>
-          )}
+
+          {/* Prim paketleri (050) */}
+          <PrimPaketSection businessId={businessId} />
+
+          <MesaiKonumSection businessId={businessId} />
         </div>
-
-        {/* Prim paketleri (050) — İşletme Adı'nın hemen altında */}
-        <PrimPaketSection businessId={businessId} />
-
-        <KategoriSection
-          title="GELİR KATEGORİLERİ"
-          tur="GELIR"
-          businessId={businessId}
-          kategoriler={gelir}
-          onRequestDelete={setDeleting}
-        />
-
-        <KategoriSection
-          title="GİDER KATEGORİLERİ"
-          tur="GIDER"
-          businessId={businessId}
-          kategoriler={gider}
-          onRequestDelete={setDeleting}
-        />
-
-        <MesaiKonumSection businessId={businessId} />
+        <div className="h-10" />
       </div>
-      <div className="h-10" />
 
       <ConfirmDialog
         open={deleting !== null}

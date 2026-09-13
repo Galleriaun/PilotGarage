@@ -1,5 +1,12 @@
 import { useEffect, useState } from 'react'
 import { KAPANIS_SAAT_OPTIONS, SaatDropdown, saatLabel } from '../kayit/components'
+import SettingsCard, {
+  cardInputCls,
+  fieldLabelCls,
+  groupTitleCls,
+  LoadError,
+  LoadSpinner,
+} from '../../components/ui/SettingsCard'
 import { mesaiSuAnkiIp, useMesaiKonum, useSaveMesaiKonum } from './api'
 
 /**
@@ -9,7 +16,7 @@ import { mesaiSuAnkiIp, useMesaiKonum, useSaveMesaiKonum } from './api'
  * `is_yonetici()`'ye daralttı (bundan önce finans geneliydi).
  */
 export default function MesaiKonumSection({ businessId }: { businessId: string }) {
-  const { data: konum } = useMesaiKonum(businessId)
+  const { data: konum, isPending, error } = useMesaiKonum(businessId)
   const save = useSaveMesaiKonum()
 
   const [lat, setLat] = useState('')
@@ -119,19 +126,39 @@ export default function MesaiKonumSection({ businessId }: { businessId: string }
     }
   }
 
-  const inputCls =
-    'w-full rounded-[12px] border-none bg-field px-[14px] py-[11px] text-sm text-ink outline-none placeholder:text-faint'
+  // Kapalıyken başlıkta görünen özet. Hata durumu AYRI: kart kapalıyken de
+  // "yüklenmedi" ile "ayar girilmemiş" karışmasın.
+  const ozet = error
+    ? 'Yüklenemedi'
+    : !konum
+      ? ''
+      : konum.mesai_bitis_saati
+        ? `Kapanış ${saatLabel(konum.mesai_bitis_saati)}`
+        : 'Otomatik kapatma kapalı'
+
+  // Veri yoksa FORM DA YOK. Eskiden boş varsayılanlarla dolu bir form
+  // çiziliyordu ve bu, silinmiş veriden ayırt edilemiyordu.
+  if (isPending || error || !konum) {
+    return (
+      <SettingsCard title="Mesai" summary={ozet}>
+        {/* SIRA ÖNEMLİ: normal yüklemede de `error` null ve `konum` undefined
+            olur — `error || !konum` yazılsaydı her sayfa açılışında kısa süre
+            KIRMIZI HATA KUTUSU görünürdü. Hata kutusu yalnızca gerçek hatada;
+            geri kalan her şey (yükleniyor, sorgu devre dışı) spinner. */}
+        {error ? <LoadError error={error} what="Mesai ayarları" /> : <LoadSpinner />}
+      </SettingsCard>
+    )
+  }
 
   return (
-    <div>
-      <div className="mb-2 text-[11px] font-bold tracking-[0.6px] text-[#666]">MESAI</div>
-
+    <SettingsCard title="Mesai" summary={ozet}>
       <div className="flex flex-col gap-2">
+        {/* ── Grup 1: otomatik kapatma ── */}
+        <div className={groupTitleCls}>OTOMATİK KAPATMA</div>
+
         {/* 060: kapanış saati — özelliği açan anahtar olduğu için EN ÜSTTE */}
         <div>
-          <div className="mb-[6px] text-[11px] font-bold tracking-[0.5px] text-faint">
-            MESAİ BİTİŞ SAATİ (KAPANIŞ)
-          </div>
+          <div className={fieldLabelCls}>MESAİ BİTİŞ SAATİ (KAPANIŞ)</div>
           <SaatDropdown
             value={bitis}
             onChange={setBitis}
@@ -145,8 +172,9 @@ export default function MesaiKonumSection({ businessId }: { businessId: string }
                 5 dakika sonra oturumları otomatik kapatılır ve raporda{' '}
                 <span className="font-semibold">"Otomatik kapatıldı"</span> olarak işaretlenir.
                 Çalışmaya devam eden ya da gece vardiyasına kalan personel tekrar{' '}
-                <span className="font-semibold">Giriş</span> yapar; unutulan gece mesaisi 14 saat
-                sonra kendiliğinden kapanır.
+                <span className="font-semibold">Giriş</span> yapar. Kapanıştan sonra başlayan
+                gece mesaileri, unutulursa girişinden{' '}
+                <span className="font-semibold">6 saat</span> sonra kapatılır.
               </>
             ) : (
               <>
@@ -157,11 +185,10 @@ export default function MesaiKonumSection({ businessId }: { businessId: string }
           </p>
         </div>
 
-        <div className="mt-1">
-          <div className="mb-[6px] text-[11px] font-bold tracking-[0.5px] text-faint">
-            KONUM & IP
-          </div>
-          <p className="text-[12px] leading-relaxed text-muted">
+        {/* ── Grup 2: konum & IP ── */}
+        <div className="mt-3 border-t border-divider pt-4">
+          <div className={groupTitleCls}>KONUM &amp; IP</div>
+          <p className="mt-[6px] text-[12px] leading-relaxed text-muted">
             Personelin giriş/çıkış yapabilmesi için işletme konumunu ve izin verilen mesafeyi
             ayarlayın. İsteğe bağlı olarak ofis internetinin statik IP'sini ekleyin (o ağdaki
             personel konumsuz geçer).
@@ -175,7 +202,7 @@ export default function MesaiKonumSection({ businessId }: { businessId: string }
             placeholder="Enlem (lat)"
             value={lat}
             onChange={(e) => setLat(e.target.value)}
-            className={inputCls}
+            className={cardInputCls}
           />
           <input
             type="text"
@@ -183,46 +210,42 @@ export default function MesaiKonumSection({ businessId }: { businessId: string }
             placeholder="Boylam (lng)"
             value={lng}
             onChange={(e) => setLng(e.target.value)}
-            className={inputCls}
+            className={cardInputCls}
           />
         </div>
         <button
           type="button"
           onClick={useMyLocation}
-          className="cursor-pointer rounded-[12px] bg-card py-[11px] text-sm font-semibold text-ink"
+          className="cursor-pointer rounded-[12px] bg-field py-[11px] text-sm font-semibold text-ink"
         >
           Bulunduğum konumu kullan
         </button>
         {geoMsg && <p className="text-[12px] text-muted">{geoMsg}</p>}
 
-        <div>
-          <div className="mb-[6px] mt-1 text-[11px] font-bold tracking-[0.5px] text-faint">
-            İZİN VERİLEN MESAFE (metre)
-          </div>
+        <div className="mt-1">
+          <div className={fieldLabelCls}>İZİN VERİLEN MESAFE (metre)</div>
           <input
             type="number"
             inputMode="numeric"
             value={yaricap}
             onChange={(e) => setYaricap(e.target.value)}
-            className={inputCls}
+            className={cardInputCls}
           />
         </div>
 
-        <div>
-          <div className="mb-[6px] mt-1 text-[11px] font-bold tracking-[0.5px] text-faint">
-            OFİS AĞI IP'LERİ (virgülle ayırın, isteğe bağlı)
-          </div>
+        <div className="mt-1">
+          <div className={fieldLabelCls}>OFİS AĞI IP'LERİ (virgülle ayırın, isteğe bağlı)</div>
           <input
             type="text"
             placeholder="örn. 88.240.1.10, 88.240.1.11"
             value={ipler}
             onChange={(e) => setIpler(e.target.value)}
-            className={inputCls}
+            className={cardInputCls}
           />
           {/* Tek dokunuşla ofis ağı kaydı: ofis Wi-Fi'sindeyken bu cihazın
               IP'si eklenir — personel o ağdayken giriş/çıkış GPS gerektirmez */}
           {myIp && (
-            <div className="mt-2 flex items-center justify-between gap-2 rounded-[12px] bg-card px-3 py-[9px]">
+            <div className="mt-2 flex items-center justify-between gap-2 rounded-[12px] bg-field px-3 py-[9px]">
               <span className="min-w-0 truncate text-[12.5px] text-muted">
                 Bu ağın IP'si: <span className="font-semibold text-ink">{myIp}</span>
               </span>
@@ -251,15 +274,17 @@ export default function MesaiKonumSection({ businessId }: { businessId: string }
             {msg}
           </p>
         )}
+        {/* disabled'daki `!konum` KALMALI: satır yüklenmeden kaydetmek konumu
+            ve IP'leri siler, o andan sonra kimse giriş/çıkış yapamaz. */}
         <button
           type="button"
           onClick={() => void onSave()}
           disabled={save.isPending || !konum}
-          className="mt-1 w-full cursor-pointer rounded-[12px] bg-ink py-[11px] text-sm font-semibold text-white disabled:opacity-60"
+          className="mt-2 w-full cursor-pointer rounded-[12px] bg-ink py-[11px] text-sm font-semibold text-white disabled:opacity-60"
         >
-          {save.isPending ? 'Kaydediliyor…' : 'Mesai Ayarını Kaydet'}
+          {save.isPending ? 'Kaydediliyor…' : 'Mesai Ayarlarını Kaydet'}
         </button>
       </div>
-    </div>
+    </SettingsCard>
   )
 }

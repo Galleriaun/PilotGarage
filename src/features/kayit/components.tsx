@@ -31,6 +31,9 @@ export const KAPANIS_SAAT_OPTIONS: string[] = Array.from({ length: 35 }, (_, i) 
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
 })
 
+// 062: `GECE_BITIS_OPTIONS` kaldırıldı — gece vardiyası bitişi artık işletme
+// ayarı değil, sabit 6 saat (bkz. migration 062).
+
 /** "14:00:00" | "14:00" -> "14.00" */
 export function saatLabel(t: string): string {
   return t.slice(0, 5).replace(':', '.')
