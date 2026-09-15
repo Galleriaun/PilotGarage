@@ -1,13 +1,16 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { useMemo, useState } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 import { useNavigate, useSearchParams } from 'react-router'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { useBusiness } from '../../app/providers/BusinessProvider'
 import ConfirmDialog from '../../components/ui/ConfirmDialog'
+import { aramaMetni } from '../../lib/arama'
 import { rpcErrorText } from '../../lib/errors'
 import { formatTL } from '../../lib/money'
+import type { OdemeYontemi } from '../../lib/types'
 import { BackChevron } from '../auth/EyeIcon'
-import { CalendarIcon, CheckSmallIcon, ChevronDownIcon, SearchIcon } from '../kayit/icons'
+import { CalendarIcon, SearchIcon } from '../kayit/icons'
+import { FilterMenu, FilterPill, MenuItem } from './FilterMenu'
 import TxCard from './TxCard'
 import {
   useApprovedIslemler,
@@ -18,13 +21,16 @@ import {
 } from './api'
 import {
   inRange,
+  islemMusteri,
   islemOrigin,
   isTransfer,
-  isTransferEs,
+  listelenecekIslemler,
   maasTutariGizli,
   onayaGeriGonderilebilir,
   periodRange,
+  yontemEslesir,
   type DateRange,
+  type YontemFiltre,
 } from './selectors'
 import { ODEME_YONTEMI_LABELS, type Islem } from './types'
 
@@ -32,9 +38,10 @@ type TurFilter = 'TUMU' | 'GELIR' | 'GIDER'
 type CalendarFilter =
   | { kind: 'TUMU' | 'BUGUN' | 'HAFTA' | 'AY' }
   | { kind: 'CUSTOM'; start: string; end: string }
-type MenuKey = 'tur' | 'kategori' | 'takvim'
+type MenuKey = 'tur' | 'kategori' | 'yontem' | 'takvim'
 
 const TUR_LABELS: Record<TurFilter, string> = { TUMU: 'Tümü', GELIR: 'Gelir', GIDER: 'Gider' }
+const YONTEMLER: OdemeYontemi[] = ['NAKIT', 'KREDI_KARTI', 'HAVALE']
 const CAL_LABELS = { TUMU: 'Tarih', BUGUN: 'Bugün', HAFTA: 'Bu Hafta', AY: 'Bu Ay' } as const
 const CAL_OPTIONS = [
   { kind: 'TUMU', label: 'Tüm Zamanlar' },
@@ -42,6 +49,12 @@ const CAL_OPTIONS = [
   { kind: 'HAFTA', label: 'Bu Hafta' },
   { kind: 'AY', label: 'Bu Ay' },
 ] as const
+
+function yontemLabel(f: YontemFiltre): string {
+  if (f === 'TUMU') return 'Yöntem'
+  if (f === 'YONTEMSIZ') return 'Yöntemsiz'
+  return ODEME_YONTEMI_LABELS[f]
+}
 
 function initialCalendar(params: URLSearchParams): CalendarFilter {
   const takvim = params.get('takvim')
@@ -71,52 +84,6 @@ function calendarLabel(cal: CalendarFilter): string {
   return CAL_LABELS[cal.kind]
 }
 
-function FilterPill({
-  label,
-  icon,
-  open,
-  onClick,
-}: {
-  label: string
-  icon?: ReactNode
-  open: boolean
-  onClick: () => void
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex cursor-pointer items-center gap-[5px] rounded-[20px] border border-[#E5E5E5] bg-white px-[14px] py-[9px]"
-    >
-      {icon}
-      <span className="text-[13px] font-semibold text-ink">{label}</span>
-      <ChevronDownIcon size={11} color="#888" rotated={open} />
-    </button>
-  )
-}
-
-function MenuItem({
-  label,
-  selected,
-  onSelect,
-}: {
-  label: string
-  selected: boolean
-  onSelect: () => void
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onSelect}
-      className="flex w-full cursor-pointer items-center justify-between gap-4 whitespace-nowrap rounded-[10px] px-3 py-[10px] text-left text-[13px] font-semibold text-ink"
-      style={{ background: selected ? 'var(--seg)' : 'transparent' }}
-    >
-      <span>{label}</span>
-      {selected && <CheckSmallIcon />}
-    </button>
-  )
-}
-
 export default function TumIslemler() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
@@ -130,6 +97,7 @@ export default function TumIslemler() {
     return t === 'GELIR' || t === 'GIDER' ? t : 'TUMU'
   })
   const [kategoriFilter, setKategoriFilter] = useState<string>('TUMU')
+  const [yontemFilter, setYontemFilter] = useState<YontemFiltre>('TUMU')
   const [calendar, setCalendar] = useState<CalendarFilter>(() => initialCalendar(searchParams))
   const [openMenu, setOpenMenu] = useState<MenuKey | null>(null)
   const [search, setSearch] = useState('')
@@ -195,17 +163,30 @@ export default function TumIslemler() {
     }
   }
 
+  // Arama alanları işlem başına BİR KEZ normalleştirilir — her tuş vuruşunda tüm
+  // liste (dönemden bağımsız, tüm zamanlar) yeniden işlenmesin (düşük uçlu telefon).
+  // Başlığın yanında müşteri adı (kayıt) ve cari işletmenin GÜNCEL adı aranır.
+  const aramaAlanlari = useMemo(() => {
+    const alanlar = new Map<string, string[]>()
+    for (const i of islemler) {
+      const musteri = islemMusteri(i)
+      alanlar.set(i.id, musteri ? [aramaMetni(i.baslik), aramaMetni(musteri)] : [aramaMetni(i.baslik)])
+    }
+    return alanlar
+  }, [islemler])
+
   const filtered = useMemo(() => {
     const range = calendarRange(calendar)
-    const q = search.trim().toLocaleLowerCase('tr-TR')
+    const q = aramaMetni(search)
     return islemler.filter(
       (i) =>
         (turFilter === 'TUMU' || i.tur === turFilter) &&
+        yontemEslesir(i, yontemFilter) &&
         (kategoriFilter === 'TUMU' || i.kategori_id === kategoriFilter) &&
         inRange(i.islem_tarihi, range) &&
-        (!q || i.baslik.toLocaleLowerCase('tr-TR').includes(q)),
+        (!q || (aramaAlanlari.get(i.id) ?? []).some((a) => a.includes(q))),
     )
-  }, [islemler, turFilter, kategoriFilter, calendar, search])
+  }, [islemler, aramaAlanlari, turFilter, yontemFilter, kategoriFilter, calendar, search])
 
   let gelir = 0
   let gider = 0
@@ -226,9 +207,11 @@ export default function TumIslemler() {
   }
 
   // Listede transfer TEK satır: eş bacak (KK girişi) gizlenir. Gelir/Gider
-  // süzgeçlerinde transfer hiç görünmez — toplamlarına da girmiyor.
-  const visible = filtered.filter(
-    (i) => !isTransferEs(i) && (turFilter === 'TUMU' || !isTransfer(i)),
+  // süzgeçlerinde transfer hiç görünmez — toplamlarına da girmiyor. Yöntem
+  // süzgeci bacakları ayırabilir; kural listelenecekIslemler'de.
+  const visible = useMemo(
+    () => listelenecekIslemler(islemler, filtered, turFilter !== 'TUMU'),
+    [islemler, filtered, turFilter],
   )
 
   // kategori menu follows the tur filter (Gider -> only gider categories)
@@ -267,7 +250,8 @@ export default function TumIslemler() {
         <h1 className="mb-4 text-[26px] font-bold tracking-[-0.4px] text-ink">Tüm İşlemler</h1>
 
         {/* Filters */}
-        <div className="mb-5 flex flex-wrap gap-2">
+        {/* `relative`: FilterMenu menüyü bu satırın genişliğinde tutar */}
+        <div className="relative mb-5 flex flex-wrap gap-2">
           <div className="relative">
             <FilterPill
               label={TUR_LABELS[turFilter]}
@@ -275,7 +259,7 @@ export default function TumIslemler() {
               onClick={() => toggleMenu('tur')}
             />
             {openMenu === 'tur' && (
-              <div className="menu-in absolute left-0 top-[calc(100%+6px)] z-20 min-w-[120px] rounded-[14px] bg-white p-[6px] shadow-[0_8px_24px_rgba(0,0,0,0.15)]">
+              <FilterMenu className="left-0 min-w-[120px]">
                 {(Object.keys(TUR_LABELS) as TurFilter[]).map((t) => (
                   <MenuItem
                     key={t}
@@ -290,7 +274,7 @@ export default function TumIslemler() {
                     }}
                   />
                 ))}
-              </div>
+              </FilterMenu>
             )}
           </div>
 
@@ -301,7 +285,7 @@ export default function TumIslemler() {
               onClick={() => toggleMenu('kategori')}
             />
             {openMenu === 'kategori' && (
-              <div className="menu-in absolute left-0 top-[calc(100%+6px)] z-20 min-w-[150px] rounded-[14px] bg-white p-[6px] shadow-[0_8px_24px_rgba(0,0,0,0.15)]">
+              <FilterMenu className="left-0 min-w-[150px]">
                 <MenuItem
                   label="Tüm Kategoriler"
                   selected={kategoriFilter === 'TUMU'}
@@ -321,7 +305,50 @@ export default function TumIslemler() {
                     }}
                   />
                 ))}
-              </div>
+              </FilterMenu>
+            )}
+          </div>
+
+          <div className="relative">
+            <FilterPill
+              label={yontemLabel(yontemFilter)}
+              open={openMenu === 'yontem'}
+              onClick={() => toggleMenu('yontem')}
+            />
+            {openMenu === 'yontem' && (
+              <FilterMenu className="left-0 min-w-[150px]">
+                <MenuItem
+                  label="Tüm Yöntemler"
+                  selected={yontemFilter === 'TUMU'}
+                  onSelect={() => {
+                    setYontemFilter('TUMU')
+                    setOpenMenu(null)
+                  }}
+                />
+                {YONTEMLER.map((y) => (
+                  <MenuItem
+                    key={y}
+                    label={ODEME_YONTEMI_LABELS[y]}
+                    selected={yontemFilter === y}
+                    onSelect={() => {
+                      setYontemFilter(y)
+                      setOpenMenu(null)
+                    }}
+                  />
+                ))}
+                {/* hiçbir kovaya girmeyen satırlar: Toplam ile Nakit + KK + Havale
+                    arasındaki farkı oluşturanlar */}
+                <div className="mt-[6px] border-t border-[#E4E4E4] pt-[6px]">
+                  <MenuItem
+                    label="Yöntemsiz"
+                    selected={yontemFilter === 'YONTEMSIZ'}
+                    onSelect={() => {
+                      setYontemFilter('YONTEMSIZ')
+                      setOpenMenu(null)
+                    }}
+                  />
+                </div>
+              </FilterMenu>
             )}
           </div>
 
@@ -333,7 +360,7 @@ export default function TumIslemler() {
               onClick={() => toggleMenu('takvim')}
             />
             {openMenu === 'takvim' && (
-              <div className="menu-in absolute right-0 top-[calc(100%+6px)] z-20 min-w-[130px] rounded-[14px] bg-white p-[6px] shadow-[0_8px_24px_rgba(0,0,0,0.15)]">
+              <FilterMenu className="right-0 min-w-[130px]">
                 {CAL_OPTIONS.map((o) => (
                   <MenuItem
                     key={o.kind}
@@ -352,7 +379,7 @@ export default function TumIslemler() {
                     onSelect={openDatePicker}
                   />
                 </div>
-              </div>
+              </FilterMenu>
             )}
           </div>
         </div>
@@ -362,9 +389,19 @@ export default function TumIslemler() {
           <SearchIcon />
           <input
             type="text"
-            placeholder="İşlem ara..."
+            placeholder="İşlem veya müşteri ara..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
+            // mobil klavye: iOS otomatik düzeltme / büyük harf adı ve plakayı
+            // bozmasın; "Ara" tuşu klavyeyi kapatır (filtre zaten canlı —
+            // sonuçlar klavyenin altında kalmasın)
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+            enterKeyHint="search"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.nativeEvent.isComposing) e.currentTarget.blur()
+            }}
             className="min-w-0 flex-1 border-none bg-transparent text-sm text-ink outline-none placeholder:text-faint"
           />
         </div>

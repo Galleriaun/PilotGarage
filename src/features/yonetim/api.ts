@@ -382,8 +382,9 @@ export function useUpdateMemberPay() {
       businessId: string
       maasKurus: number
       odemeGunu: number
-      // 054: maaşın kasa kovası — elle ödeme ve cron otomatik maaşı buradan okur
-      yontem: OdemeYontemi | null
+      // 054: maaşın kasa kovası — elle ödeme ve cron otomatik maaşı buradan okur.
+      // 064: zorunlu (sunucu NULL'ı reddeder) — tip de null kabul etmez
+      yontem: OdemeYontemi
     }) => {
       const { error } = await supabase.rpc('update_member_pay', {
         p_profile: input.profileId,

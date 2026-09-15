@@ -1752,12 +1752,19 @@ begin
     raise exception 'FAIL: maaş üyelikteki kovaya düşmedi (054), got %', v_durum;
   end if;
 
-  -- seçim kaldırılabilir (NULL yazılır) — UI'daki "seçiliye tekrar dokun = kaldır".
-  -- Bu yüzden update_member_pay coalesce KULLANMAZ; yöntemsiz çağrı siler.
-  perform update_member_pay(u_personel, v_servis, 3000.00, 0, null);
+  -- 064: maaş yöntemi zorunlu — seçimi kaldırmak (NULL) reddedilir, kayıtlı yöntem durur
+  begin
+    perform update_member_pay(u_personel, v_servis, 3000.00, 0, null);
+    raise exception 'FAIL: maaş yöntemi NULL yapılabildi (064)';
+  exception when others then
+    if sqlerrm like 'FAIL:%' then raise; end if;
+    if sqlerrm not like '%ödeme yöntemi seçilmeli%' then
+      raise exception 'FAIL: update_member_pay yanlış sebeple reddedildi: % (064)', sqlerrm;
+    end if;
+  end;
   if (select odeme_yontemi from business_members
-      where profile_id = u_personel and business_id = v_servis) is not null then
-    raise exception 'FAIL: maaş yöntemi temizlenemedi (054)';
+      where profile_id = u_personel and business_id = v_servis) is distinct from 'KREDI_KARTI' then
+    raise exception 'FAIL: reddedilen çağrı maaş yöntemini değiştirdi (064)';
   end if;
   perform pg_temp.logout();
   perform pg_temp.login(u_muhasebe);
@@ -2566,6 +2573,68 @@ begin
   end if;
 
   raise notice 'PASS 42: maaş yalnızca Yönetici — öde / düzenle / sil / geri al; çöpten Mesai geri alma (063)';
+
+
+  -- ═══ 43) 064: maaş ödeme yöntemi zorunlu (seçilmemiş = Kredi Kartı) ═══
+
+  -- (a) şema: NOT NULL + KREDI_KARTI varsayılanı; kolon yoksa da yakalanır
+  select is_nullable || '/' || coalesce(column_default, 'NULL') into v_durum
+  from information_schema.columns
+  where table_schema = 'public' and table_name = 'business_members'
+    and column_name = 'odeme_yontemi';
+  if v_durum is null or v_durum not like 'NO/%KREDI_KARTI%' then
+    raise exception 'FAIL: business_members.odeme_yontemi NOT NULL + KREDI_KARTI varsayılanı olmalı (064), got %',
+      coalesce(v_durum, 'kolon yok');
+  end if;
+  if exists (select 1 from business_members where odeme_yontemi is null) then
+    raise exception 'FAIL: yöntemi boş üyelik kaldı (064)';
+  end if;
+
+  -- (b) tablo sahibi olarak bile doğrudan NULL yazılamaz
+  begin
+    update business_members set odeme_yontemi = null
+    where profile_id = u_muhasebe and business_id = v_servis;
+    raise exception 'FAIL: üyelik yöntemi doğrudan NULL yapılabildi (064)';
+  exception
+    when not_null_violation then null; -- expected
+  end;
+
+  -- (c) yöntem VERMEDEN açılan üyelik (set_business_access) Kredi Kartı doğar
+  perform pg_temp.login(u_yonetici);
+  perform set_business_access(u_personel, array[v_servis, v_galeri]);
+  perform pg_temp.logout();
+  if (select odeme_yontemi from business_members
+      where profile_id = u_personel and business_id = v_galeri) is distinct from 'KREDI_KARTI' then
+    raise exception 'FAIL: yöntem vermeden açılan üyelik Kredi Kartı doğmadı (064)';
+  end if;
+
+  -- (d) o üyelikten ödenen maaş Kredi Kartı kovasına düşer (yöntemsiz maaş doğamaz)
+  update business_members set maas = 250.00
+  where profile_id = u_personel and business_id = v_galeri;
+  perform pg_temp.login(u_yonetici);
+  select pay_maas(u_personel, v_galeri) into v_maas;
+  perform pg_temp.logout();
+  select durum::text || '/' || coalesce(odeme_yontemi::text, 'NULL') into v_durum
+  from islemler where id = v_maas;
+  if v_durum is distinct from 'ONAYLANDI/KREDI_KARTI' then
+    raise exception 'FAIL: varsayılan üyelikten ödenen maaş Kredi Kartı kovasına düşmedi (064), got %',
+      coalesce(v_durum, 'işlem yok');
+  end if;
+
+  -- (e) yetki kontrolü yöntem kontrolünden ÖNCE: Muhasebe 063 mesajını alır
+  perform pg_temp.login(u_muhasebe);
+  begin
+    perform update_member_pay(u_personel, v_servis, 1.00, 0, null);
+    raise exception 'FAIL: Muhasebe update_member_pay çağırabildi (063/064)';
+  exception when others then
+    if sqlerrm like 'FAIL:%' then raise; end if;
+    if sqlerrm not like '%yalnızca Yöneticidedir%' then
+      raise exception 'FAIL: yetki kontrolü yöntem kontrolünden önce gelmeli, got: % (064)', sqlerrm;
+    end if;
+  end;
+  perform pg_temp.logout();
+
+  raise notice 'PASS 43: maaş ödeme yöntemi zorunlu — NOT NULL + Kredi Kartı varsayılanı, boş üyelik yok, NULL reddedilir, yeni üyelik ve maaşı Kredi Kartı (064)';
 
   raise notice '';
   raise notice '=== ALL TESTS PASSED (rolling back — no test data persists) ===';

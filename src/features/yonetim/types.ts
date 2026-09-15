@@ -5,7 +5,8 @@ export interface Member {
   profile_id: string
   business_id: string
   maas: number | string
-  /** 054: maaşın kasa kovası (elle + otomatik ödeme). NULL = seçilmemiş */
+  /** 054: maaşın kasa kovası (elle + otomatik ödeme). 064: zorunlu (NOT NULL,
+   *  varsayılan KREDI_KARTI) — NULL yalnızca 064 koşmadan önce gelebilir */
   odeme_yontemi: OdemeYontemi | null
   odeme_gunu: number
   profile: {

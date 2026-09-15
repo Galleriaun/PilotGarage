@@ -1,5 +1,6 @@
+import { aramaMetni } from '../../lib/arama'
 import { istanbulTodayISO, monthRangeISO, shiftDaysISO } from '../../lib/dates'
-import type { Role } from '../../lib/types'
+import type { OdemeYontemi, Role } from '../../lib/types'
 import type { Islem, IslemTur } from './types'
 
 export type PeriodKey = 'TUMU' | 'BUGUN' | 'HAFTA' | 'AY'
@@ -79,6 +80,42 @@ export function isTransferEs(i: Islem): boolean {
   return isTransfer(i) && i.transfer_of != null
 }
 
+/** Tüm İşlemler ödeme yöntemi süzgeci. YONTEMSIZ = yöntemi boş işlemler —
+ *  Toplam'ı oynatıp hiçbir kovaya (Nakit/KK/Havale) girmeyen satırlar. */
+export type YontemFiltre = 'TUMU' | OdemeYontemi | 'YONTEMSIZ'
+
+export function yontemEslesir(i: Islem, f: YontemFiltre): boolean {
+  if (f === 'TUMU') return true
+  // `== null`: kolon okunamazsa undefined gelir, o da "yöntemsiz"dir
+  if (f === 'YONTEMSIZ') return i.odeme_yontemi == null
+  return i.odeme_yontemi === f
+}
+
+/**
+ * Süzgeçten geçen satırlardan listede GÖSTERİLECEKLER (sıra `tum`'daki sıradır).
+ *
+ * Transfer listede tek satırdır (ana bacak), eş bacak hiç çizilmez — TxCard
+ * "kaynak → hedef" çiplerini ana bacağın yönteminden türetir. Bacaklar aynı
+ * tarih/başlık/kategoriyle doğar, onları AYIRABİLEN tek süzgeç yöntemdir:
+ * Nakit → KK aktarımında "Kredi Kartı" süzgeci yalnızca eş bacağı tutar. Eşi
+ * eşleşen aktarımın ana satırı da gösterilir; yoksa özet barındaki Kredi Kartı
+ * rakamına giren aktarım listede görünmezdi.
+ * `turSuzgeci` (Gelir/Gider): transfer hiç gösterilmez (toplamlarına da girmez).
+ */
+export function listelenecekIslemler(tum: Islem[], eslesen: Islem[], turSuzgeci: boolean): Islem[] {
+  const eslesenId = new Set<string>()
+  const esiEslesen = new Set<string>()
+  for (const i of eslesen) {
+    eslesenId.add(i.id)
+    if (isTransferEs(i) && i.transfer_of != null) esiEslesen.add(i.transfer_of)
+  }
+  return tum.filter((i) => {
+    if (isTransferEs(i)) return false
+    if (isTransfer(i)) return !turSuzgeci && (eslesenId.has(i.id) || esiEslesen.has(i.id))
+    return eslesenId.has(i.id)
+  })
+}
+
 /**
  * Onaya geri gönderilebilir mi? (040) — YALNIZCA gerçekten Onay'dan geçmiş,
  * bir insanın onayladığı işlemler. Onay'a hiç DÜŞMEYEN (born-ONAYLANDI)
@@ -149,6 +186,37 @@ export function islemOrigin(i: Islem): string | null {
       // MANUEL: yalnızca tekrar kuralından doğmuşsa yönet (kural Sabit Giderler'de)
       return i.tekrar_kural_id ? '/yonetim/sabit-giderler' : null
   }
+}
+
+/**
+ * İşlemin müşteri adı — Tüm İşlemler araması ve kart satırı. Ad başlıktan değil
+ * GÜNCEL kaynaktan okunur: kayıt geliri başlığı `plaka — paket` olduğu için adı
+ * hiç taşımaz; cari başlığı adı oluşturulduğu andaki hâliyle taşır (işletme
+ * yeniden adlandırılırsa bayatlar).
+ *   • KAYIT       → kayıttaki musteri_adi (boşsa / kayıt silinmişse null)
+ *   • CARI_HESAP  → cari işletmenin şimdiki adı (işletme silinmişse null)
+ *   • diğerleri   → null (PERSONEL adı zaten başlıkta; müşteri değil)
+ */
+export function islemMusteri(i: Islem): string | null {
+  if (i.kaynak === 'KAYIT') return i.kayit?.musteri_adi?.trim() || null
+  if (i.kaynak === 'CARI_HESAP') return i.cari_hareket?.cari_isletme?.name?.trim() || null
+  return null
+}
+
+/**
+ * Kartta müşteri adı satırı gösterilecek mi? Kayıt geliri: ad varsa her zaman.
+ * Cari: başlık zaten `ad — …` ile başlıyorsa GİZLİ — bütün cari işlem başlıkları
+ * `ci.name || ' — ' || …` ile doğar, aynı ad kartta iki kez yazmasın. Yalnızca
+ * işletme yeniden adlandırıldıysa görünür (tam da o zaman işe yarar).
+ * Karşılaştırma aramaMetni ile: büyük/küçük harf ve boşluk farkı "yeni ad" sayılmaz.
+ */
+export function islemMusteriKartta(i: Islem): string | null {
+  const ad = islemMusteri(i)
+  if (!ad) return null
+  if (i.kaynak === 'CARI_HESAP' && aramaMetni(i.baslik).startsWith(`${aramaMetni(ad)} — `)) {
+    return null
+  }
+  return ad
 }
 
 /**

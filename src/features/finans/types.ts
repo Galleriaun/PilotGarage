@@ -63,8 +63,15 @@ export interface Islem {
   /** NULL = system entry (cron) or deleted account. */
   creator: { full_name: string } | null
   /** CARI_HESAP kaynağının işletmesi — "oluşturulduğu yere git" (işletme
-   *  detayı) için. NULL = hareket/işletme silinmiş (015). */
-  cari_hareket: { cari_isletme_id: string } | null
+   *  detayı) için. NULL = hareket/işletme silinmiş (015). `cari_isletme.name`
+   *  işletmenin GÜNCEL adı — müşteri araması + kart satırı (islemMusteri). */
+  cari_hareket: {
+    cari_isletme_id: string
+    cari_isletme: { name: string } | null
+  } | null
+  /** KAYIT kaynağının kaydı — müşteri araması + kart satırı (islemMusteri).
+   *  NULL = kayıt silinmiş (013) ya da işlem kayıttan doğmamış. */
+  kayit: { musteri_adi: string } | null
   /** PERSONEL kaynağının (avans/prim/maaş) personeli — 0 ya da 1 satır.
    *  "Oluşturulduğu yere git" (personel detayı) için; `tur` maaş tutarını
    *  Yönetici dışından gizler (063). */

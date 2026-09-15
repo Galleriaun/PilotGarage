@@ -397,6 +397,17 @@ export default function PersonelDetay() {
       setSaveError('En az bir işletme seçili olmalı.')
       return
     }
+    const payChanged =
+      current.maasKurus !== saved.maasKurus ||
+      current.odemeGunu !== saved.odemeGunu ||
+      current.maasYontem !== saved.maasYontem
+    const maasYontem = current.maasYontem
+    // 064: maaş ödeme yöntemi zorunlu — hiçbir şey yazılmadan ÖNCE durdurulur
+    // (rol/erişim kaydedilip maaş reddedilseydi yarım kayıt kalırdı)
+    if (payChanged && maasYontem === null) {
+      setSaveError('Maaş ödeme yöntemi seçin.')
+      return
+    }
     try {
       if (current.role !== saved.role && isYonetici && !isSelf && current.role) {
         await setRole.mutateAsync({ profileId: id, role: current.role })
@@ -404,17 +415,13 @@ export default function PersonelDetay() {
       if (businessIdsChanged) {
         await setBusinessAccess.mutateAsync({ profileId: id, businessIds: current.businessIds })
       }
-      if (
-        current.maasKurus !== saved.maasKurus ||
-        current.odemeGunu !== saved.odemeGunu ||
-        current.maasYontem !== saved.maasYontem
-      ) {
+      if (payChanged && maasYontem !== null) {
         await updatePay.mutateAsync({
           profileId: id,
           businessId,
           maasKurus: current.maasKurus,
           odemeGunu: current.odemeGunu,
-          yontem: current.maasYontem,
+          yontem: maasYontem,
         })
       }
       setDraft({})
@@ -722,16 +729,17 @@ export default function PersonelDetay() {
               />
             </div>
             {/* 054: maaşın kasa kovası. Hem "Maaş Öde" hem cron'un otomatik
-                maaşı buradan okur; seçili olana tekrar dokunmak seçimi kaldırır.
-                Mevcut maaş SATIRLARI değişmez — ayar bundan sonrasını kapsar. */}
+                maaşı buradan okur. 064: ZORUNLU — seçim kaldırılamaz (allowNull
+                yok); seçilmemiş üyelikler Kredi Kartı yapıldı, yeni üyelik de
+                Kredi Kartı doğar. Mevcut maaş SATIRLARI değişmez — ayar bundan
+                sonrasını kapsar. */}
             <div>
               <div className="mb-2 text-[11px] font-bold tracking-[0.6px] text-faint">
-                MAAŞ ÖDEME YÖNTEMİ — İSTEĞE BAĞLI
+                MAAŞ ÖDEME YÖNTEMİ
               </div>
               <YontemSecici
                 value={current.maasYontem}
                 onChange={(yontem) => setDraft((d) => ({ ...d, maasYontem: yontem }))}
-                allowNull
               />
             </div>
             {isYonetici && !isSelf && (

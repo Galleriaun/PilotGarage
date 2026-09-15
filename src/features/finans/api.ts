@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { istanbulTodayISO, nextOccurrenceAfterISO } from '../../lib/dates'
 import { kurusToNumericString, numericStringToKurus } from '../../lib/money'
 import type { OdemeYontemi } from '../../lib/types'
+import type { ExcelFiltre } from './excel'
 import type {
   Islem,
   IslemTur,
@@ -18,8 +19,13 @@ import type {
 // cari hareketin işletmesi ve avans/prim/maaş satırının personeli. Embed'ler
 // RLS'e tabidir; finans ekranlarında dolu gelir, kaynak uymayan satırlarda boş.
 // personel_odeme.tur (063): maaş tutarını Yönetici dışından gizler (maasTutariGizli).
+// kayit.musteri_adi + cari_hareket.cari_isletme.name: Tüm İşlemler müşteri araması
+// ve kart satırı (islemMusteri) — kayıt geliri başlığı adı hiç taşımaz, cari başlığı
+// oluşturulduğu andaki adı taşır; buradan GÜNCEL ad okunur. İki embed de tek FK'dan
+// çözülür (islemler.kayit_id, cari_hareketler.cari_isletme_id): ikinci bir FK
+// eklenirse PostgREST TÜM sorguyu reddeder ve Finans ekranları boşalır.
 const ISLEM_SELECT =
-  '*, kategori:kategoriler(id,label,tur), creator:profiles!islemler_created_by_fkey(full_name), cari_hareket:cari_hareketler(cari_isletme_id), personel_odeme:personel_odemeler(profile_id,tur)'
+  '*, kategori:kategoriler(id,label,tur), creator:profiles!islemler_created_by_fkey(full_name), cari_hareket:cari_hareketler(cari_isletme_id,cari_isletme:cari_isletmeler(name)), personel_odeme:personel_odemeler(profile_id,tur), kayit:kayitlar(musteri_adi)'
 
 function withKurus(rows: unknown[]): Islem[] {
   return (rows as Omit<Islem, 'kurus'>[]).map((r) => ({
@@ -161,6 +167,45 @@ export function useKayitSilmeTalepleri(businessId: string) {
     },
     enabled: businessId !== '',
   })
+}
+
+/**
+ * Excel dışa aktarım (Finans): tarih aralığındaki ONAYLANDI işlemler + isteğe
+ * bağlı süzgeçler. Önbelleğe alınmayan tek seferlik çekim.
+ *
+ * Supabase yanıt başına en fazla 1000 satır döndürür (varsayılan max_rows) —
+ * tek sorgu geniş aralıkta SESSİZCE kırpılırdı. id'ye göre keyset sayfalama:
+ * çekim sırasında eklenen/silinen satır başka satırı atlatmaz; BOŞ sayfa gelene
+ * kadar döner, sunucu sınırı daha düşük ayarlansa da eksik bırakmaz.
+ */
+export async function fetchIslemlerExcel(businessId: string, filtre: ExcelFiltre): Promise<Islem[]> {
+  const SAYFA = 1000
+  const MAX_SAYFA = 200
+  const tum: Islem[] = []
+  let sonId: string | null = null
+  for (let sayfa = 0; sayfa < MAX_SAYFA; sayfa++) {
+    let q = supabase
+      .from('islemler')
+      .select(ISLEM_SELECT)
+      .eq('business_id', businessId)
+      .eq('durum', 'ONAYLANDI')
+      .gte('islem_tarihi', filtre.baslangic)
+      .lte('islem_tarihi', filtre.bitis)
+    if (filtre.tur !== null) q = q.eq('tur', filtre.tur)
+    if (filtre.yalnizcaKayit) q = q.eq('kaynak', 'KAYIT')
+    if (filtre.yontemler.length > 0) q = q.in('odeme_yontemi', filtre.yontemler)
+    if (filtre.kategoriIdler.length > 0) q = q.in('kategori_id', filtre.kategoriIdler)
+    if (sonId !== null) q = q.gt('id', sonId)
+    const { data, error } = await q.order('id', { ascending: true }).limit(SAYFA)
+    if (error) throw error
+    if (data.length === 0) return tum
+    const rows = withKurus(data)
+    tum.push(...rows)
+    const son = rows.at(-1)
+    if (!son) return tum
+    sonId = son.id
+  }
+  throw new Error('Bu aralıkta çok fazla işlem var — daha kısa bir tarih aralığı seçin.')
 }
 
 // ── Mutations ────────────────────────────────────────────────

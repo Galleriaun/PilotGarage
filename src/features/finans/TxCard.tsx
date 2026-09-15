@@ -2,7 +2,7 @@ import { useAuth } from '../../app/providers/AuthProvider'
 import { formatCreatedStamp, formatRelativeDate } from '../../lib/dates'
 import { formatTL } from '../../lib/money'
 import type { OdemeYontemi } from '../../lib/types'
-import { maasTutariGizli } from './selectors'
+import { islemMusteriKartta, maasTutariGizli } from './selectors'
 import { ODEME_YONTEMI_CHIP, ODEME_YONTEMI_LABELS, type Islem } from './types'
 
 function YontemChip({ y }: { y: OdemeYontemi }) {
@@ -132,6 +132,8 @@ function UndoSmallIcon() {
  *  adds the Yönetici-only "onaya geri gönder" undo button (040).
  *  `onOpen` (varsa) kartı tıklanabilir yapar: işlemin oluşturulduğu yere gider
  *  (kayıt/işletme/personel/sabit gider). Aksiyon butonları tıklamayı yutmaz.
+ *  Müşteri (kayıt) / güncel işletme adı (cari) varsa satırın altında ayrı bir
+ *  satırda görünür (islemMusteriKartta) — Tüm İşlemler araması bununla eşleşir.
  */
 export default function TxCard({
   islem,
@@ -155,10 +157,11 @@ export default function TxCard({
   const tutarGizli = maasTutariGizli(islem, profile?.role)
   const kaynakYontem: OdemeYontemi = islem.odeme_yontemi ?? 'NAKIT'
   const hedefYontem: OdemeYontemi = kaynakYontem === 'NAKIT' ? 'KREDI_KARTI' : 'NAKIT'
+  const musteri = islemMusteriKartta(islem)
   const base =
     variant === 'white'
-      ? 'flex items-center gap-3 rounded-[16px] bg-white px-4 py-[14px] shadow-[0_1px_2px_rgba(0,0,0,0.03),0_4px_10px_rgba(0,0,0,0.04)] md:border md:border-[#E4E4E7]'
-      : 'flex items-center gap-3 rounded-[16px] bg-card px-4 py-[14px]'
+      ? 'rounded-[16px] bg-white px-4 py-[14px] shadow-[0_1px_2px_rgba(0,0,0,0.03),0_4px_10px_rgba(0,0,0,0.04)] md:border md:border-[#E4E4E7]'
+      : 'rounded-[16px] bg-card px-4 py-[14px]'
   return (
     <div
       className={onOpen ? `${base} cursor-pointer` : base}
@@ -182,85 +185,96 @@ export default function TxCard({
           : undefined
       }
     >
-      <div className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-[11px] bg-field">
-        <TxIcon kind={iconKind(islem)} />
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-bold text-ink">
-          {islem.kaynak === 'CARI_HESAP' && !islem.cari_hareket_id && (
-            <span className="font-semibold text-muted">Silinen işletme: </span>
-          )}
-          {islem.baslik}
+      <div className="flex items-center gap-3">
+        <div className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-[11px] bg-field">
+          <TxIcon kind={iconKind(islem)} />
         </div>
-        <div className="mt-[2px] flex min-w-0 items-center gap-[6px] text-xs text-muted">
-          <span className="whitespace-nowrap">{formatRelativeDate(islem.islem_tarihi)}</span>
-          {islem.kategori && (
-            <span className="truncate rounded-[6px] bg-[#EBEBEB] px-[7px] py-[2px] text-[10.5px] font-semibold text-[#555]">
-              {islem.kategori.label}
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-sm font-bold text-ink">
+            {islem.kaynak === 'CARI_HESAP' && !islem.cari_hareket_id && (
+              <span className="font-semibold text-muted">Silinen işletme: </span>
+            )}
+            {islem.baslik}
+          </div>
+          <div className="mt-[2px] flex min-w-0 items-center gap-[6px] text-xs text-muted">
+            <span className="whitespace-nowrap">{formatRelativeDate(islem.islem_tarihi)}</span>
+            {islem.kategori && (
+              <span className="truncate rounded-[6px] bg-[#EBEBEB] px-[7px] py-[2px] text-[10.5px] font-semibold text-[#555]">
+                {islem.kategori.label}
+              </span>
+            )}
+            {transfer ? (
+              <span className="flex shrink-0 items-center gap-[4px]">
+                <YontemChip y={kaynakYontem} />
+                <span className="text-[11px] font-bold text-faint">→</span>
+                <YontemChip y={hedefYontem} />
+              </span>
+            ) : (
+              islem.odeme_yontemi && <YontemChip y={islem.odeme_yontemi} />
+            )}
+          </div>
+          <div className="mt-[4px] flex min-w-0 items-center gap-[10px] text-[11px] text-faint">
+            <span className="flex min-w-0 items-center gap-[5px]">
+              <span className="h-[4px] w-[4px] shrink-0 rounded-full bg-[#C4C4C4]" />
+              <span className="truncate">{islem.creator?.full_name ?? 'Otomatik'}</span>
             </span>
-          )}
-          {transfer ? (
-            <span className="flex shrink-0 items-center gap-[4px]">
-              <YontemChip y={kaynakYontem} />
-              <span className="text-[11px] font-bold text-faint">→</span>
-              <YontemChip y={hedefYontem} />
+            <span className="flex shrink-0 items-center gap-[5px]">
+              <span className="h-[4px] w-[4px] shrink-0 rounded-full bg-[#C4C4C4]" />
+              {formatCreatedStamp(islem.created_at)}
             </span>
-          ) : (
-            islem.odeme_yontemi && <YontemChip y={islem.odeme_yontemi} />
-          )}
+          </div>
         </div>
-        <div className="mt-[4px] flex min-w-0 items-center gap-[10px] text-[11px] text-faint">
-          <span className="flex min-w-0 items-center gap-[5px]">
-            <span className="h-[4px] w-[4px] shrink-0 rounded-full bg-[#C4C4C4]" />
-            <span className="truncate">{islem.creator?.full_name ?? 'Otomatik'}</span>
-          </span>
-          <span className="flex shrink-0 items-center gap-[5px]">
-            <span className="h-[4px] w-[4px] shrink-0 rounded-full bg-[#C4C4C4]" />
-            {formatCreatedStamp(islem.created_at)}
-          </span>
+        <div
+          className="shrink-0 text-sm font-bold"
+          style={{
+            color: transfer
+              ? 'var(--color-ink)'
+              : islem.tur === 'GELIR'
+                ? '#15803D'
+                : '#C62828',
+          }}
+        >
+          {transfer
+            ? formatTL(islem.kurus)
+            : tutarGizli
+              ? `${islem.tur === 'GELIR' ? '+' : '-'}••• ₺`
+              : amountLabel(islem)}
         </div>
+        {onOnayaGonder && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation() // kart tıklamasını (onOpen) tetikleme
+              onOnayaGonder()
+            }}
+            aria-label="Onaya geri gönder"
+            className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-[9px] bg-field"
+          >
+            <UndoSmallIcon />
+          </button>
+        )}
+        {onDelete && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation() // kart tıklamasını (onOpen) tetikleme
+              onDelete()
+            }}
+            aria-label="İşlemi sil"
+            className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-[9px] bg-danger-soft"
+          >
+            <TrashSmallIcon />
+          </button>
+        )}
       </div>
-      <div
-        className="shrink-0 text-sm font-bold"
-        style={{
-          color: transfer
-            ? 'var(--color-ink)'
-            : islem.tur === 'GELIR'
-              ? '#15803D'
-              : '#C62828',
-        }}
-      >
-        {transfer
-          ? formatTL(islem.kurus)
-          : tutarGizli
-            ? `${islem.tur === 'GELIR' ? '+' : '-'}••• ₺`
-            : amountLabel(islem)}
-      </div>
-      {onOnayaGonder && (
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation() // kart tıklamasını (onOpen) tetikleme
-            onOnayaGonder()
-          }}
-          aria-label="Onaya geri gönder"
-          className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-[9px] bg-field"
-        >
-          <UndoSmallIcon />
-        </button>
-      )}
-      {onDelete && (
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation() // kart tıklamasını (onOpen) tetikleme
-            onDelete()
-          }}
-          aria-label="İşlemi sil"
-          className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-[9px] bg-danger-soft"
-        >
-          <TrashSmallIcon />
-        </button>
+      {/* Müşteri adı üst satırın ALTINDA, tam genişlikte — başlığa eklenmez:
+          mobilde (375px, Yönetici, iki buton) metin sütunu ~65px, ad orada hiç
+          görünmezdi. pl-[50px] = ikon 38 + gap 12 → metin sütunuyla hizalı.
+          Etiket yok (owner): yalnızca ad. */}
+      {musteri && (
+        <div className="mt-[4px] truncate pl-[50px] text-[11px] font-medium text-soft" title={musteri}>
+          {musteri}
+        </div>
       )}
     </div>
   )

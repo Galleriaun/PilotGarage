@@ -8,12 +8,15 @@ import { formatTL } from '../../lib/money'
 import { GearIcon, SwapIcon } from '../kayit/icons'
 import { BellButton, TrashHeaderButton } from '../settings/HeaderButtons'
 import FinansMenu from '../yonetim/FinansMenu'
+import { ChevronRightSm } from '../yonetim/MemberRow'
 import AddTxModal from './AddTxModal'
 import CeptenOdemeModal from './CeptenOdemeModal'
+import ExcelExportModal, { ExcelIcon } from './ExcelExportModal'
 import TransferModal from './TransferModal'
 import TxCard from './TxCard'
 import {
   useApprovedIslemler,
+  useKategoriler,
   useKayitSilmeTalepleri,
   useMaasOdemeleri,
   usePendingIslemler,
@@ -122,6 +125,9 @@ export default function Yonetim() {
   const [addTx, setAddTx] = useState<IslemTur | null>(null)
   const [transferOpen, setTransferOpen] = useState(false)
   const [ceptenOpen, setCeptenOpen] = useState(false)
+  const [excelOpen, setExcelOpen] = useState(false)
+  // Excel İndir kategori süzgeci (yalnızca aktif kategoriler)
+  const { data: kategoriler = [] } = useKategoriler(businessId)
 
   const today = istanbulTodayISO()
   const currentYear = Number(today.slice(0, 4))
@@ -469,9 +475,27 @@ export default function Yonetim() {
               ))}
             </div>
           </div>
+
+          {/* Excel İndir — tarih + isteğe bağlı süzgeçlerle dışa aktarım (ExcelExportModal) */}
+          <div className="px-6 pt-[22px] md:pt-10">
+            <button
+              type="button"
+              onClick={() => setExcelOpen(true)}
+              className="pressable flex w-full cursor-pointer items-center gap-3 rounded-[16px] bg-white px-4 py-[14px] text-left shadow-[0_1px_2px_rgba(0,0,0,0.03),0_4px_10px_rgba(0,0,0,0.04)] md:border md:border-[#E4E4E7]"
+            >
+              <ExcelIcon />
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-sm font-bold text-ink">Excel İndir</div>
+                <div className="truncate text-xs text-muted">Tarih ve süzgeç seçerek işlemleri indir</div>
+              </div>
+              <ChevronRightSm />
+            </button>
+          </div>
         </>
       )}
-      <div className="h-6" />
+      {/* Yönetici'de Onay FAB'ı en alttaki içeriğin (Excel İndir) üstüne binmesin:
+          FAB mobilde nav'ın ~53px, masaüstünde ekran altının ~73px üstünü kaplar */}
+      <div className={isYonetici ? 'h-24' : 'h-6'} />
 
       {/* Onay floating button — always visible; the badge shows only when
           something is actually waiting. Portaled to <body>: the screen
@@ -523,6 +547,18 @@ export default function Yonetim() {
         businessId={businessId}
         nakitKurus={nakitTumu}
         onClose={() => setCeptenOpen(false)}
+      />
+
+      {/* Excel İndir: veriyi kendi (sayfalı) sorgusuyla çeker — ekrandaki listeye
+          ve dönem filtresine bağlı değildir. role: maaş tutarı gizleme (063) */}
+      <ExcelExportModal
+        open={excelOpen}
+        businessId={businessId}
+        isletmeAdi={activeBusiness?.name ?? ''}
+        role={profile?.role ?? null}
+        olusturan={profile?.full_name ?? ''}
+        kategoriler={kategoriler}
+        onClose={() => setExcelOpen(false)}
       />
     </div>
   )
